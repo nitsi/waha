@@ -750,6 +750,7 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
     );
   }
 
+
   @Activity()
   async sendPoll(request: MessagePollRequest) {
     const poll = new Poll(request.poll.name, request.poll.options, {
@@ -764,8 +765,39 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
     );
   }
 
-  sendImage(request: MessageImageRequest) {
-    throw new AvailableInPlusVersion();
+
+  async sendImage(request: MessageImageRequest) {
+    const chatId = this.ensureSuffix(request.chatId);
+    const options = this.getMessageOptions(request);
+
+    // Add caption to options if provided
+    if (request.caption) {
+      options.caption = request.caption;
+    }
+
+    let messageMedia: MessageMedia;
+
+    // Handle BinaryFile (base64 data)
+    if ('data' in request.file) {
+      messageMedia = new MessageMedia(
+        request.file.mimetype,
+        request.file.data,
+        request.file.filename,
+      );
+    }
+    // Handle RemoteFile (URL)
+    else if ('url' in request.file) {
+      messageMedia = await MessageMedia.fromUrl(request.file.url);
+      // Override filename if provided
+      if (request.file.filename) {
+        messageMedia.filename = request.file.filename;
+      }
+    } else {
+      throw new Error('Invalid file format');
+    }
+
+    return this.whatsapp.sendMessage(chatId, messageMedia, options);
+
   }
 
   sendFile(request: MessageFileRequest) {
@@ -1654,16 +1686,16 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
       ),
       map((event): WAMessageRevokedBody => {
         const afterMessage = event.after ? this.toWAMessage(event.after) : null;
-        const beforeMessage = event.before
-          ? this.toWAMessage(event.before)
-          : null;
-        // Extract the revoked message ID from the protocolMessageKey.id field
-        const revokedMessageId = afterMessage?._data?.protocolMessageKey?.id;
-        return {
-          after: afterMessage,
-          before: beforeMessage,
-          revokedMessageId: revokedMessageId,
-        };
+          const beforeMessage = event.before
+            ? this.toWAMessage(event.before)
+            : null;
+          // Extract the revoked message ID from the protocolMessageKey.id field
+          const revokedMessageId = afterMessage?._data?.protocolMessageKey?.id;
+          return {
+            after: afterMessage,
+            before: beforeMessage,
+            revokedMessageId: revokedMessageId,
+          };
       }),
     );
     this.events2.get(WAHAEvents.MESSAGE_REVOKED).switch(messagesRevoked$);
@@ -1686,13 +1718,13 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
     const messagesEdit$ = messageEdit$.pipe(
       filter((event: any) => this.jids.include(event?.message?.id?.remote)),
       map((event): WAMessageEditedBody => {
-        const message = this.toWAMessage(event.message);
-        return {
-          ...message,
-          body: event.newBody,
-          editedMessageId: message._data?.id?.id,
-          _data: event,
-        };
+          const message = this.toWAMessage(event.message);
+          return {
+            ...message,
+            body: event.newBody,
+            editedMessageId: message._data?.id?.id,
+            _data: event,
+          };
       }),
     );
     this.events2.get(WAHAEvents.MESSAGE_EDITED).switch(messagesEdit$);
