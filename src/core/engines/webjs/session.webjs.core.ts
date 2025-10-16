@@ -31,6 +31,7 @@ import {
 import { IMediaEngineProcessor } from '@waha/core/media/IMediaEngineProcessor';
 import { QR } from '@waha/core/QR';
 import { StatusToAck } from '@waha/core/utils/acks';
+import { WAMimeType } from '@waha/core/media/WAMimeType';
 import {
   parseMessageIdSerialized,
   SerializeMessageKey,
@@ -734,8 +735,70 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
     throw new AvailableInPlusVersion();
   }
 
-  sendVoice(request: MessageVoiceRequest) {
-    throw new AvailableInPlusVersion();
+  async sendVoice(request: MessageVoiceRequest) {
+    const chatId = this.ensureSuffix(request.chatId);
+    const media = await this.createVoiceMessageMedia(
+      request.file,
+      request.convert,
+    );
+    const options = {
+      ...this.getMessageOptions(request),
+      sendAudioAsVoice: true,
+    };
+    return this.whatsapp.sendMessage(chatId, media, options);
+  }
+
+  private async createVoiceMessageMedia(
+    file: BinaryFile | RemoteFile,
+    convert?: boolean,
+  ): Promise<MessageMedia> {
+    const buffer = await this.resolveVoiceBuffer(file);
+    let processed = buffer;
+    let mimetype = file.mimetype;
+    let filename = file.filename;
+
+    if (convert) {
+      processed = await this.mediaConverter.voice(buffer);
+      mimetype = WAMimeType.VOICE;
+      filename = this.ensureVoiceFilename(filename);
+    }
+
+    const resolvedMimetype =
+      mimetype && mimetype.length > 0 ? mimetype : WAMimeType.VOICE;
+
+    return new MessageMedia(
+      resolvedMimetype,
+      processed.toString('base64'),
+      filename,
+    );
+  }
+
+  private async resolveVoiceBuffer(
+    file: BinaryFile | RemoteFile,
+  ): Promise<Buffer> {
+    if ('data' in file) {
+      return Buffer.from(file.data, 'base64');
+    }
+    if ('url' in file) {
+      return await this.fetch(file.url);
+    }
+    throw new UnprocessableEntityException(
+      'Either "data" or "url" must be specified to send a voice message.',
+    );
+  }
+
+  private ensureVoiceFilename(filename?: string): string {
+    if (!filename) {
+      return 'voice-note.opus';
+    }
+    if (filename.toLowerCase().endsWith('.opus')) {
+      return filename;
+    }
+    const dotIndex = filename.lastIndexOf('.');
+    if (dotIndex === -1) {
+      return `${filename}.opus`;
+    }
+    return `${filename.slice(0, dotIndex)}.opus`;
   }
 
   sendButtonsReply(request: MessageButtonReply) {
