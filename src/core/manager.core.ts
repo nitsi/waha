@@ -47,6 +47,7 @@ import { DOCS_URL } from './exceptions';
 import { getProxyConfig } from './helpers.proxy';
 import { MediaManager } from './media/MediaManager';
 import { LocalSessionAuthRepository } from './storage/LocalSessionAuthRepository';
+import { LocalSessionConfigRepository } from './storage/LocalSessionConfigRepository';
 import { LocalStoreCore } from './storage/LocalStoreCore';
 import { CoreApiKeyRepository } from './storage/CoreApiKeyRepository';
 
@@ -56,7 +57,7 @@ export class SessionManagerCore extends SessionManager implements OnModuleInit {
 
   // Map of session name to session instance
   private sessions: Map<string, WhatsappSession>;
-  // Map of session name to session config
+  // Map of session name to session config (in-memory cache)
   private sessionConfigs: Map<string, SessionConfig>;
   DEFAULT = 'default';
 
@@ -86,6 +87,7 @@ export class SessionManagerCore extends SessionManager implements OnModuleInit {
 
     this.store = new LocalStoreCore(engineName.toLowerCase());
     this.sessionAuthRepository = new LocalSessionAuthRepository(this.store);
+    this.sessionConfigRepository = new LocalSessionConfigRepository(this.store);
     this.clearStorage().catch((error) => {
       this.log.error({ error }, 'Error while clearing storage');
     });
@@ -147,7 +149,12 @@ export class SessionManagerCore extends SessionManager implements OnModuleInit {
   // API Methods
   //
   async exists(name: string): Promise<boolean> {
-    return this.sessionConfigs.has(name);
+    // Check in-memory cache first
+    if (this.sessionConfigs.has(name)) {
+      return true;
+    }
+    // Check persisted config
+    return await this.sessionConfigRepository.exists(name);
   }
 
   isRunning(name: string): boolean {
@@ -155,7 +162,11 @@ export class SessionManagerCore extends SessionManager implements OnModuleInit {
   }
 
   async upsert(name: string, config?: SessionConfig): Promise<void> {
-    this.sessionConfigs.set(name, config || {});
+    const sessionConfig = config || {};
+    // Update in-memory cache
+    this.sessionConfigs.set(name, sessionConfig);
+    // Persist to disk
+    await this.sessionConfigRepository.saveConfig(name, sessionConfig);
   }
 
   async start(name: string): Promise<SessionDTO> {
@@ -165,7 +176,16 @@ export class SessionManagerCore extends SessionManager implements OnModuleInit {
       );
     }
     this.log.info({ session: name }, `Starting session...`);
-    const sessionConfig = this.sessionConfigs.get(name);
+
+    // Load config from disk if not in memory
+    let sessionConfig = this.sessionConfigs.get(name);
+    if (!sessionConfig) {
+      sessionConfig = await this.sessionConfigRepository.getConfig(name);
+      if (sessionConfig) {
+        this.sessionConfigs.set(name, sessionConfig);
+      }
+    }
+
     const logger = this.log.logger.child({ session: name });
     logger.level = getPinoLogLevel(sessionConfig?.debug);
     const loggerBuilder: LoggerBuilder = logger;
@@ -297,20 +317,31 @@ export class SessionManagerCore extends SessionManager implements OnModuleInit {
     this.sessions.delete(name);
     this.sessionConfigs.delete(name);
     this.events2.delete(name);
+    // Delete persisted config
+    await this.sessionConfigRepository.deleteConfig(name);
   }
 
   /**
    * Combine per session and global webhooks
+   * Priority order:
+   * 1. Session config webhooks (from API/DB)
+   * 2. Session-specific env webhooks (WHATSAPP_HOOK_URL__SESSION_NAME)
+   * 3. Global env webhooks (WHATSAPP_HOOK_URL)
    */
   private getWebhooks(name: string, sessionConfig?: SessionConfig) {
     let webhooks: WebhookConfig[] = [];
+
+    // 1. Session config webhooks (highest priority)
     if (sessionConfig?.webhooks) {
       webhooks = webhooks.concat(sessionConfig.webhooks);
     }
-    const globalWebhookConfig = this.config.getWebhookConfig();
-    if (globalWebhookConfig) {
-      webhooks.push(globalWebhookConfig);
+
+    // 2. Session-specific env webhook or global env webhook
+    const envWebhookConfig = this.config.getSessionWebhookConfig(name);
+    if (envWebhookConfig) {
+      webhooks.push(envWebhookConfig);
     }
+
     return webhooks;
   }
 
@@ -359,15 +390,30 @@ export class SessionManagerCore extends SessionManager implements OnModuleInit {
 
     // If all=true, also include stopped sessions (configs without running sessions)
     if (all) {
-      for (const [name, config] of this.sessionConfigs.entries()) {
-        if (!this.sessions.has(name)) {
-          result.push({
-            name: name,
-            status: WAHASessionStatus.STOPPED,
-            config: config,
-            me: null,
-          });
+      // Load all persisted configs
+      const allSessionNames = await this.sessionConfigRepository.getAllConfigs();
+
+      for (const name of allSessionNames) {
+        // Skip if already running
+        if (this.sessions.has(name)) {
+          continue;
         }
+
+        // Load config if not in memory
+        let config = this.sessionConfigs.get(name);
+        if (!config) {
+          config = await this.sessionConfigRepository.getConfig(name);
+          if (config) {
+            this.sessionConfigs.set(name, config);
+          }
+        }
+
+        result.push({
+          name: name,
+          status: WAHASessionStatus.STOPPED,
+          config: config || {},
+          me: null,
+        });
       }
     }
 
@@ -419,5 +465,36 @@ export class SessionManagerCore extends SessionManager implements OnModuleInit {
     await this.store.init();
     const knex = this.store.getWAHADatabase();
     await this.appsService.migrate(knex);
+
+    // Load all persisted session configs into memory
+    await this.loadPersistedConfigs();
+  }
+
+  /**
+   * Load all persisted session configs from disk into memory
+   */
+  private async loadPersistedConfigs() {
+    try {
+      const sessionNames = await this.sessionConfigRepository.getAllConfigs();
+      this.log.info(
+        { count: sessionNames.length },
+        'Loading persisted session configs...',
+      );
+
+      for (const name of sessionNames) {
+        const config = await this.sessionConfigRepository.getConfig(name);
+        if (config) {
+          this.sessionConfigs.set(name, config);
+          this.log.debug({ session: name }, 'Loaded session config from disk');
+        }
+      }
+
+      this.log.info(
+        { count: this.sessionConfigs.size },
+        'Loaded persisted session configs',
+      );
+    } catch (error) {
+      this.log.error({ error }, 'Failed to load persisted session configs');
+    }
   }
 }
