@@ -1,6 +1,9 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { GlobalWebhookConfigConfig } from '@waha/core/config/GlobalWebhookConfig';
+import {
+  GlobalWebhookConfigConfig,
+  PerSessionWebhookConfig,
+} from '@waha/core/config/GlobalWebhookConfig';
 import { IgnoreJidConfig } from '@waha/core/utils/jids';
 
 import { parseBool } from './helpers';
@@ -122,6 +125,22 @@ export class WhatsappConfigService implements OnApplicationBootstrap {
 
   getWebhookConfig(): WebhookConfig | undefined {
     return this.webhookConfig.config;
+  }
+
+  /**
+   * Get webhook config for a specific session.
+   * Returns session-specific config if defined, otherwise returns global config.
+   * @param sessionName - The name of the session
+   * @returns WebhookConfig or undefined
+   */
+  getSessionWebhookConfig(sessionName: string): WebhookConfig | undefined {
+    const sessionConfig = new PerSessionWebhookConfig(
+      this.configService,
+      sessionName,
+    );
+    const config = sessionConfig.config;
+    // If session-specific config exists, use it; otherwise fall back to global
+    return config || this.webhookConfig.config;
   }
 
   getSessionMongoUrl(): string | undefined {
