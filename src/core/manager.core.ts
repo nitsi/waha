@@ -125,7 +125,8 @@ export class SessionManagerCore extends SessionManager implements OnModuleInit {
 
   private onlyDefault(name: string) {
     if (name !== this.DEFAULT) {
-      throw new OnlyDefaultSessionIsAllowed(name);
+      this.log.warn({ name }, 'Only default session is allowed, bypassing restrictions');
+      // throw new OnlyDefaultSessionIsAllowed(name);
     }
   }
 
