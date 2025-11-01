@@ -115,6 +115,7 @@ import { MeInfo } from '@waha/structures/sessions.dto';
 import { StatusRequest, TextStatus } from '@waha/structures/status.dto';
 import {
   EnginePayload,
+  PollVotePayload,
   WAMessageAckBody,
   WAMessageEditedBody,
   WAMessageRevokedBody,
@@ -142,6 +143,7 @@ import {
   Location,
   Message,
   MessageMedia,
+  PollVote,
   Reaction,
   WAState,
 } from 'whatsapp-web.js';
@@ -1795,6 +1797,16 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
       }),
     );
     this.events2.get(WAHAEvents.CALL_RECEIVED).switch(calls$);
+
+    //
+    // Poll Votes
+    //
+    const voteUpdate$ = fromEvent(this.whatsapp, 'vote_update');
+    const pollVotes$ = voteUpdate$.pipe(
+      map(this.processPollVote.bind(this)),
+      filter(Boolean),
+    );
+    this.events2.get(WAHAEvents.POLL_VOTE).switch(pollVotes$);
   }
 
   protected async processIncomingMessage(
@@ -1834,6 +1846,52 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
         messageId: reaction.msgId._serialized,
       },
     };
+  }
+
+  private processPollVote(pollVote: any): PollVotePayload | null {
+    try {
+      // Extract the selected option names from the poll vote
+      const selectedOptions = pollVote.selectedOptions?.map(
+        (option: any) => option.name,
+      ) || [];
+
+      // Get the parent message ID
+      const parentMessageId = pollVote.parentMessage?.id?._serialized;
+      if (!parentMessageId) {
+        this.logger.warn('Poll vote missing parent message ID');
+        return null;
+      }
+
+      // Create the vote payload
+      const vote = {
+        id: parentMessageId, // Use parent message ID as vote ID
+        from: pollVote.voter,
+        to: pollVote.parentMessage?.from || pollVote.parentMessage?.to,
+        fromMe: pollVote.parentMessage?.fromMe || false,
+        participant: pollVote.voter,
+        selectedOptions: selectedOptions,
+        timestamp: pollVote.interractedAtTs,
+      };
+
+      // Create the poll payload (the parent message)
+      const poll = {
+        id: parentMessageId,
+        from: pollVote.parentMessage?.from,
+        to: pollVote.parentMessage?.to,
+        fromMe: pollVote.parentMessage?.fromMe || false,
+        participant: pollVote.parentMessage?.author,
+      };
+
+      return {
+        vote: vote,
+        poll: poll,
+        _data: pollVote,
+      };
+    } catch (error) {
+      this.logger.error('Failed to process poll vote');
+      this.logger.error(error, error.stack);
+      return null;
+    }
   }
 
   protected TagReceiptToMessageAck(receipt: ReceiptEvent): WAMessageAckBody[] {
