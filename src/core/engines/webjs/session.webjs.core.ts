@@ -168,6 +168,7 @@ import {
   PollVote as WebjsPollVote,
   Message,
   MessageMedia,
+  PollVote,
   Reaction,
   WAState,
 } from 'whatsapp-web.js';
@@ -1749,16 +1750,16 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
       ),
       map((event): WAMessageRevokedBody => {
         const afterMessage = event.after ? this.toWAMessage(event.after) : null;
-          const beforeMessage = event.before
-            ? this.toWAMessage(event.before)
-            : null;
-          // Extract the revoked message ID from the protocolMessageKey.id field
-          const revokedMessageId = afterMessage?._data?.protocolMessageKey?.id;
-          return {
-            after: afterMessage,
-            before: beforeMessage,
-            revokedMessageId: revokedMessageId,
-          };
+        const beforeMessage = event.before
+          ? this.toWAMessage(event.before)
+          : null;
+        // Extract the revoked message ID from the protocolMessageKey.id field
+        const revokedMessageId = afterMessage?._data?.protocolMessageKey?.id;
+        return {
+          after: afterMessage,
+          before: beforeMessage,
+          revokedMessageId: revokedMessageId,
+        };
       }),
     );
     this.events2.get(WAHAEvents.MESSAGE_REVOKED).switch(messagesRevoked$);
@@ -1781,13 +1782,13 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
     const messagesEdit$ = messageEdit$.pipe(
       filter((event: any) => this.jids.include(event?.message?.id?.remote)),
       map((event): WAMessageEditedBody => {
-          const message = this.toWAMessage(event.message);
-          return {
-            ...message,
-            body: event.newBody,
-            editedMessageId: message._data?.id?.id,
-            _data: event,
-          };
+        const message = this.toWAMessage(event.message);
+        return {
+          ...message,
+          body: event.newBody,
+          editedMessageId: message._data?.id?.id,
+          _data: event,
+        };
       }),
     );
     this.events2.get(WAHAEvents.MESSAGE_EDITED).switch(messagesEdit$);
@@ -2009,6 +2010,7 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
     };
   }
 
+
   private toPollVotePayload(vote: WebjsPollVote): PollVotePayload | null {
     const pollMessageId = vote?.parentMessage?.id?._serialized;
     if (!pollMessageId) {
@@ -2058,6 +2060,7 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
       vote: pollVote,
       _data: vote,
     };
+
   }
 
   protected TagReceiptToMessageAck(receipt: ReceiptEvent): WAMessageAckBody[] {
@@ -2200,8 +2203,7 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
 }
 
 export class WEBJSEngineMediaProcessor
-  implements IMediaEngineProcessor<Message>
-{
+  implements IMediaEngineProcessor<Message> {
   hasMedia(message: Message): boolean {
     if (!message.hasMedia) {
       return false;
