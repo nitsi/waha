@@ -980,9 +980,11 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
       async (chatIdParam, pollMsgIdParam, votesParam) => {
         try {
           // Get the message key from the serialized poll message ID
+          // @ts-ignore
           const pollMsgKey = window.Store.MsgKey.fromString(pollMsgIdParam);
 
           // Get the poll message to access poll options
+          // @ts-ignore
           const pollMsg = await window.Store.Msg.get(pollMsgKey);
           if (!pollMsg) {
             throw new Error('Poll message not found');
@@ -1010,6 +1012,7 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
           }
 
           // Send the poll vote
+          // @ts-ignore
           await window.Store.SendPollVote.sendPollVote(
             pollMsgKey,
             selectedOptionLocalIds,
