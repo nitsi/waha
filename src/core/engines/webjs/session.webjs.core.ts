@@ -71,6 +71,7 @@ import {
   MessageForwardRequest,
   MessageImageRequest,
   MessageLocationRequest,
+  MessagePollRequest,
   MessagePollVoteRequest,
   MessageReactionRequest,
   MessageReplyRequest,
@@ -150,6 +151,7 @@ import {
   Location,
   Message,
   MessageMedia,
+  Poll,
   PollVote,
   Reaction,
   WAState,
@@ -826,7 +828,23 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
     throw new AvailableInPlusVersion();
   }
 
-  @Activity()
+  async sendPoll(request: MessagePollRequest) {
+    const chatId = this.ensureSuffix(request.chatId);
+    const options = this.getMessageOptions(request);
+
+    // Create poll using whatsapp-web.js Poll class
+    const poll = new Poll(
+      request.poll.name,
+      request.poll.options,
+      {
+        allowMultipleAnswers: request.poll.multipleAnswers || false,
+        messageSecret: undefined,
+      },
+    );
+
+    return this.whatsapp.sendMessage(chatId, poll, options);
+  }
+
   async sendLocation(request: MessageLocationRequest) {
     const location = new Location(request.latitude, request.longitude, {
       name: request.title,
