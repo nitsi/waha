@@ -55,6 +55,9 @@ yarn format
 
 ### Docker Commands
 ```bash
+# Build and test the Docker image (Windows)
+install.bat         # Builds Docker image and starts container
+
 # Build different variants
 make build          # Core version
 make build-plus     # Plus version
@@ -155,3 +158,10 @@ Environment configuration via `.env` file (see `.env.example`):
 - Proto files are fetched and compiled via `scripts/gows-proto.js`
 - Run `yarn gows:proto:fetch` to download proto definitions
 - Run `yarn gows:proto:build` to compile them to TypeScript
+
+### Testing Changes with Docker (Windows)
+When making code changes that need to be tested:
+1. Make your code changes
+2. Run `install.bat` to build the Docker image and verify compilation
+3. If successful, commit your changes
+4. The script handles building, testing, and container restart automatically
