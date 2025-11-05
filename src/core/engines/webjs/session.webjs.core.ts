@@ -75,6 +75,7 @@ import {
   MessageImageRequest,
   MessageLocationRequest,
   MessagePollRequest,
+  MessagePollVoteRequest,
   MessageReactionRequest,
   MessageReplyRequest,
   MessageStarRequest,
@@ -927,6 +928,73 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
   async setReaction(request: MessageReactionRequest) {
     const message = this.recreateMessage(request.messageId);
     return message.react(request.reaction);
+  }
+
+  async sendPollVote(request: MessagePollVoteRequest) {
+    const chatId = this.ensureSuffix(request.chatId);
+    const pollMessageId = request.pollMessageId;
+    const votes = request.votes;
+
+    // Send the poll vote using WhatsApp Web's internal store
+    const result = await this.whatsapp.pupPage.evaluate(
+      async (chatIdParam, pollMsgIdParam, votesParam) => {
+        try {
+          // Get the message key from the serialized poll message ID
+          const pollMsgKey = window.Store.MsgKey.fromString(pollMsgIdParam);
+
+          // Get the poll message to access poll options
+          const pollMsg = await window.Store.Msg.get(pollMsgKey);
+          if (!pollMsg) {
+            throw new Error('Poll message not found');
+          }
+
+          // Get poll options from the message
+          const pollOptions = pollMsg.pollOptions;
+          if (!pollOptions || pollOptions.length === 0) {
+            throw new Error('Poll has no options');
+          }
+
+          // Map vote option names to local IDs
+          const selectedOptionLocalIds = [];
+          for (const voteName of votesParam) {
+            const option = pollOptions.find((opt) => opt.name === voteName);
+            if (option) {
+              selectedOptionLocalIds.push(option.localId);
+            } else {
+              throw new Error(`Poll option "${voteName}" not found`);
+            }
+          }
+
+          if (selectedOptionLocalIds.length === 0) {
+            throw new Error('No valid poll options found');
+          }
+
+          // Send the poll vote
+          await window.Store.SendPollVote.sendPollVote(
+            pollMsgKey,
+            selectedOptionLocalIds,
+          );
+
+          return { success: true };
+        } catch (error) {
+          return {
+            success: false,
+            error: error.message || 'Unknown error occurred'
+          };
+        }
+      },
+      chatId,
+      pollMessageId,
+      votes,
+    );
+
+    if (!result.success) {
+      throw new UnprocessableEntityException(
+        `Failed to send poll vote: ${result.error}`,
+      );
+    }
+
+    return { sent: true };
   }
 
   /**
