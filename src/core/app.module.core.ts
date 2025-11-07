@@ -82,7 +82,8 @@ export const IMPORTS_CORE = [
             req.url.startsWith('/dashboard/') ||
             req.url.startsWith('/api/files/') ||
             req.url.startsWith('/api/s3/') ||
-            req.url.startsWith('/jobs/')
+            req.url.startsWith('/jobs/') ||
+            req.url.startsWith('/mcp')
           );
         },
       },
