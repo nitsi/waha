@@ -253,9 +253,8 @@ export class AppModuleCore {
     consumer
       .apply(ApiKeyAuthMiddleware)
       .exclude(...exclude)
-      .forRoutes('api', 'health');
+      .forRoutes('api', 'health', 'ws', 'mcp');
 
-    // Dashboard
     const dashboardCredentials = this.dashboardConfig.credentials;
     if (dashboardCredentials) {
       const username = dashboardCredentials[0];
