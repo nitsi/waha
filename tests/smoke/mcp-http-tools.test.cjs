@@ -36,6 +36,7 @@ function createTransport() {
     fetch: fetchWithTimeout,
     requestInit: {
       headers: {
+        Accept: 'application/json, text/event-stream',
         ...(API_KEY ? { 'X-Api-Key': API_KEY } : {}),
       },
     },

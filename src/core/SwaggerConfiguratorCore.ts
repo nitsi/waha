@@ -195,6 +195,7 @@ export class SwaggerConfiguratorCore {
       '/ping',
       '/ws',
       '/webhooks/',
+      '/mcp',
       ...config.getExcludedFullPaths(),
     ]);
 
