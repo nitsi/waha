@@ -56,6 +56,7 @@ export class WahaMcpService implements OnModuleInit {
       version: '1.0.0',
     });
 
+    this.setupRequestLogging();
     this.registerTools();
     this.registerResources();
     this.registerPrompts();
@@ -70,7 +71,7 @@ export class WahaMcpService implements OnModuleInit {
         const transport = new this.StdioServerTransportClass();
         await this.mcpServer.connect(transport);
         this.enabledTransports.push('stdio');
-        this.logger.log('WAHA MCP Server stdio transport initialized');
+        this.logger.log('WAHA MCP Server stdio transport initialized - client connected');
       } catch (error) {
         this.logger.warn('Failed to initialize stdio transport (this is normal if not running as subprocess)', error);
       }
@@ -95,6 +96,8 @@ export class WahaMcpService implements OnModuleInit {
       return;
     }
 
+    this.logger.log(`New MCP HTTP client connection from ${req.ip || req.socket.remoteAddress}`);
+
     const transport = new this.StreamableHTTPServerTransportClass({
       sessionIdGenerator: undefined, // No session management needed for stateless use
       enableJsonResponse: true,
@@ -103,6 +106,7 @@ export class WahaMcpService implements OnModuleInit {
     // Clean up transport when response closes
     res.on('close', () => {
       transport.close();
+      this.logger.debug('MCP HTTP client connection closed');
     });
 
     try {
@@ -115,6 +119,32 @@ export class WahaMcpService implements OnModuleInit {
         res.status(500).json({ error: 'Internal server error' });
       }
     }
+  }
+
+  private setupRequestLogging() {
+    // Hook into tools/list request to log when client discovers tools
+    this.mcpServer.setRequestHandler(
+      'tools/list',
+      async () => {
+        this.logger.log('MCP client is discovering available tools');
+        // Return default tools list (handled by SDK)
+        const tools = await this.mcpServer.getTools();
+        this.logger.log(`Returned ${tools.length} tools to MCP client`);
+        return { tools };
+      }
+    );
+
+    // Hook into resources/list request to log when client discovers resources
+    this.mcpServer.setRequestHandler(
+      'resources/list',
+      async () => {
+        this.logger.log('MCP client is discovering available resources');
+        // Return default resources list (handled by SDK)
+        const resources = await this.mcpServer.getResources();
+        this.logger.log(`Returned ${resources.length} resources to MCP client`);
+        return { resources };
+      }
+    );
   }
 
   private registerTools() {
