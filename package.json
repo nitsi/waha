@@ -21,6 +21,7 @@
     "test:cov": "jest --coverage",
     "test:debug": "node --inspect-brk -r tsconfig-paths/register -r ts-node/register node_modules/.bin/jest --runInBand",
     "test:e2e": "jest --config ./test/jest-e2e.json",
+    "test:mcp-http": "node --test tests/smoke/mcp-http-tools.test.cjs",
     "gows:proto:fetch": "node scripts/gows-proto.js fetch",
     "gows:proto:build": "node scripts/gows-proto.js build",
     "gows:proto": "yarn gows:proto:fetch && yarn gows:proto:build"
