@@ -12,7 +12,7 @@ const {
 
 const MCP_HTTP_URL = process.env.MCP_HTTP_URL ?? 'http://localhost:3000/mcp';
 const API_KEY = process.env.WAHA_MCP_HTTP_API_KEY ?? process.env.WAHA_API_KEY;
-const HTTP_TIMEOUT_MS = Number(process.env.MCP_HTTP_TIMEOUT_MS ?? 5000);
+const HTTP_TIMEOUT_MS = Number(process.env.MCP_HTTP_TIMEOUT_MS ?? 10000);
 
 function createTransport() {
   const fetchWithTimeout = async (input, init = {}) => {
