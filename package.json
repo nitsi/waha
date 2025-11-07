@@ -39,7 +39,7 @@
     "@casl/ability": "^6.8.0",
     "@figuro/chatwoot-sdk": "^1.1.17",
     "@liaoliaots/nestjs-redis": "^9",
-    "@modelcontextprotocol/sdk": "1.21.0",
+    "@modelcontextprotocol/sdk": "^1.21.0",
     "@nestjs/axios": "^3.0.2",
     "@nestjs/bullmq": "^11.0.2",
     "@nestjs/common": "^11.0.0",

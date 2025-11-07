@@ -1,7 +1,4 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio';
-import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp';
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { SessionManager } from '@waha/core/abc/manager.abc';
@@ -16,8 +13,11 @@ import { ContactQuery } from '@waha/structures/contacts.dto';
 @Injectable()
 export class WahaMcpService implements OnModuleInit {
   private readonly logger = new Logger(WahaMcpService.name);
-  private mcpServer: McpServer;
+  private mcpServer: any; // MCP Server instance
   private enabledTransports: string[] = [];
+  private McpServer: any;
+  private StdioServerTransportClass: any;
+  private StreamableHTTPServerTransportClass: any;
 
   constructor(private sessionManager: SessionManager) {}
 
@@ -29,7 +29,34 @@ export class WahaMcpService implements OnModuleInit {
     }
 
     this.logger.log('Initializing WAHA MCP Server...');
-    this.mcpServer = new McpServer({
+
+    // Lazy-load MCP SDK only when enabled
+    // Direct requires to workaround MCP SDK export path resolution issues in CommonJS
+    try {
+      const McpSdk = require('@modelcontextprotocol/sdk/server/mcp.js');
+      const StdioTransportSdk = require('@modelcontextprotocol/sdk/server/stdio.js');
+      const HttpTransportSdk = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
+
+      // Log what we actually got to debug the import issue
+      this.logger.debug(`McpSdk keys: ${Object.keys(McpSdk)}`);
+      this.logger.debug(`McpSdk.Server type: ${typeof McpSdk.Server}`);
+      this.logger.debug(`McpSdk.default type: ${typeof McpSdk.default}`);
+
+      // Try different ways to access the Server class
+      this.McpServer = McpSdk.Server || McpSdk.default?.Server || McpSdk.default;
+      this.StdioServerTransportClass = StdioTransportSdk.StdioServerTransport || StdioTransportSdk.default?.StdioServerTransport || StdioTransportSdk.default;
+      this.StreamableHTTPServerTransportClass = HttpTransportSdk.StreamableHTTPServerTransport || HttpTransportSdk.default?.StreamableHTTPServerTransport || HttpTransportSdk.default;
+
+      if (!this.McpServer) {
+        this.logger.error('Could not find Server class in MCP SDK');
+        return;
+      }
+    } catch (error) {
+      this.logger.error('Failed to load MCP SDK', error);
+      return;
+    }
+
+    this.mcpServer = new this.McpServer({
       name: 'waha',
       version: '1.0.0',
     });
@@ -45,7 +72,7 @@ export class WahaMcpService implements OnModuleInit {
     // Connect via stdio for local process communication (like Claude Desktop)
     if (enableStdio) {
       try {
-        const transport = new StdioServerTransport();
+        const transport = new this.StdioServerTransportClass();
         await this.mcpServer.connect(transport);
         this.enabledTransports.push('stdio');
         this.logger.log('WAHA MCP Server stdio transport initialized');
@@ -73,7 +100,7 @@ export class WahaMcpService implements OnModuleInit {
       return;
     }
 
-    const transport = new StreamableHTTPServerTransport({
+    const transport = new this.StreamableHTTPServerTransportClass({
       sessionIdGenerator: undefined, // No session management needed for stateless use
       enableJsonResponse: true,
     });
