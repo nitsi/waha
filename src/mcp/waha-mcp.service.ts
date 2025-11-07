@@ -37,18 +37,13 @@ export class WahaMcpService implements OnModuleInit {
       const StdioTransportSdk = require('@modelcontextprotocol/sdk/server/stdio.js');
       const HttpTransportSdk = require('@modelcontextprotocol/sdk/server/streamableHttp.js');
 
-      // Log what we actually got to debug the import issue
-      this.logger.debug(`McpSdk keys: ${Object.keys(McpSdk)}`);
-      this.logger.debug(`McpSdk.Server type: ${typeof McpSdk.Server}`);
-      this.logger.debug(`McpSdk.default type: ${typeof McpSdk.default}`);
+      // MCP SDK exports McpServer (not Server)
+      this.McpServer = McpSdk.McpServer;
+      this.StdioServerTransportClass = StdioTransportSdk.StdioServerTransport;
+      this.StreamableHTTPServerTransportClass = HttpTransportSdk.StreamableHTTPServerTransport;
 
-      // Try different ways to access the Server class
-      this.McpServer = McpSdk.Server || McpSdk.default?.Server || McpSdk.default;
-      this.StdioServerTransportClass = StdioTransportSdk.StdioServerTransport || StdioTransportSdk.default?.StdioServerTransport || StdioTransportSdk.default;
-      this.StreamableHTTPServerTransportClass = HttpTransportSdk.StreamableHTTPServerTransport || HttpTransportSdk.default?.StreamableHTTPServerTransport || HttpTransportSdk.default;
-
-      if (!this.McpServer) {
-        this.logger.error('Could not find Server class in MCP SDK');
+      if (!this.McpServer || !this.StdioServerTransportClass || !this.StreamableHTTPServerTransportClass) {
+        this.logger.error('Could not load required MCP SDK classes');
         return;
       }
     } catch (error) {
