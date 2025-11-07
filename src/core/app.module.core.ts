@@ -26,6 +26,7 @@ import { MediaLocalStorageModule } from '@waha/core/media/local/media.local.stor
 import { MediaLocalStorageConfig } from '@waha/core/media/local/MediaLocalStorageConfig';
 import { ChannelsInfoServiceCore } from '@waha/core/services/ChannelsInfoServiceCore';
 import { parseBool } from '@waha/helpers';
+import { WahaMcpModule } from '@waha/mcp/waha-mcp.module';
 import { BufferJsonReplacerInterceptor } from '@waha/nestjs/BufferJsonReplacerInterceptor';
 import { HttpsExpress } from '@waha/nestjs/HttpsExpress';
 import {
@@ -135,7 +136,7 @@ const IMPORTS_MEDIA = [
   MediaLocalStorageModule,
 ];
 
-const IMPORTS = [...IMPORTS_CORE, ...IMPORTS_MEDIA];
+const IMPORTS = [...IMPORTS_CORE, ...IMPORTS_MEDIA, WahaMcpModule];
 
 export const CONTROLLERS = [
   AuthController,
