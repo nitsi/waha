@@ -26,7 +26,6 @@ import { MediaLocalStorageModule } from '@waha/core/media/local/media.local.stor
 import { MediaLocalStorageConfig } from '@waha/core/media/local/MediaLocalStorageConfig';
 import { ChannelsInfoServiceCore } from '@waha/core/services/ChannelsInfoServiceCore';
 import { parseBool } from '@waha/helpers';
-import { WahaMcpModule } from '@waha/mcp/waha-mcp.module';
 import { BufferJsonReplacerInterceptor } from '@waha/nestjs/BufferJsonReplacerInterceptor';
 import { HttpsExpress } from '@waha/nestjs/HttpsExpress';
 import {
@@ -57,6 +56,8 @@ import { SessionsController } from '../api/sessions.controller';
 import { StatusController } from '../api/status.controller';
 import { VersionController } from '../api/version.controller';
 import { WhatsappConfigService } from '../config.service';
+import { WahaMcpController } from '@waha/mcp/waha-mcp.controller';
+import { WahaMcpService } from '@waha/mcp/waha-mcp.service';
 import { SessionManager } from './abc/manager.abc';
 import { WAHAHealthCheckService } from './abc/WAHAHealthCheckService';
 import { ApiKeyAuthFactory } from './auth/ApiKeyAuthFactory';
@@ -137,7 +138,7 @@ const IMPORTS_MEDIA = [
   MediaLocalStorageModule,
 ];
 
-const IMPORTS = [...IMPORTS_CORE, ...IMPORTS_MEDIA, WahaMcpModule];
+const IMPORTS = [...IMPORTS_CORE, ...IMPORTS_MEDIA];
 
 export const CONTROLLERS = [
   AuthController,
@@ -162,6 +163,7 @@ export const CONTROLLERS = [
   ServerDebugController,
   VersionController,
   MediaController,
+  WahaMcpController,
   ...AppsModuleExports.controllers,
 ];
 export const PROVIDERS_BASE: Provider[] = [
@@ -197,6 +199,7 @@ const PROVIDERS = [
     useClass: WAHAHealthCheckServiceCore,
   },
   ChannelsInfoServiceCore,
+  WahaMcpService,
   ...PROVIDERS_BASE,
 ];
 
