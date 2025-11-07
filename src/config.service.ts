@@ -14,6 +14,7 @@ import { Auth } from '@waha/core/auth/config';
 export class WhatsappConfigService implements OnApplicationBootstrap {
   private logger: Logger;
   private webhookConfig: GlobalWebhookConfigConfig;
+  private mcpAllowedSessions: string[] | null = null;
 
   constructor(private configService: ConfigService) {
     this.logger = new Logger('WhatsappConfigService');
@@ -221,10 +222,69 @@ export class WhatsappConfigService implements OnApplicationBootstrap {
     return { status, groups, channels, broadcast };
   }
 
+  /**
+   * Get the list of MCP-allowed session names.
+   * Returns null if not configured (all sessions blocked by default).
+   * Returns an array of allowed session names if configured.
+   */
+  getMcpAllowedSessions(): string[] | null {
+    if (this.mcpAllowedSessions !== null) {
+      return this.mcpAllowedSessions;
+    }
+
+    const value = this.configService.get('WAHA_MCP_ALLOWED_SESSIONS', '');
+    if (!value || value.trim() === '') {
+      this.mcpAllowedSessions = null;
+      return null;
+    }
+
+    // Parse comma-separated list, trim whitespace, remove empty entries, and dedupe
+    const sessions = value
+      .split(',')
+      .map((s: string) => s.trim())
+      .filter((s: string) => s.length > 0);
+
+    // Deduplicate
+    this.mcpAllowedSessions = Array.from(new Set(sessions));
+    return this.mcpAllowedSessions;
+  }
+
+  /**
+   * Check if a session is allowed for MCP access.
+   * Returns false if no allowlist is configured (blocks all access).
+   * Returns true if the session is in the allowlist.
+   */
+  isMcpSessionAllowed(sessionName: string): boolean {
+    const allowedSessions = this.getMcpAllowedSessions();
+    if (allowedSessions === null || allowedSessions.length === 0) {
+      return false;
+    }
+    return allowedSessions.includes(sessionName);
+  }
+
   onApplicationBootstrap() {
     const error = this.webhookConfig.validateConfig();
     if (error) {
       throw new Error(`Invalid global webhook config:\n${error}\n`);
+    }
+
+    // Log MCP allowlist configuration if MCP is enabled
+    const mcpEnabled =
+      this.configService.get('WAHA_MCP_ENABLED', 'false') === 'true';
+    if (mcpEnabled) {
+      const allowedSessions = this.getMcpAllowedSessions();
+      if (allowedSessions === null || allowedSessions.length === 0) {
+        this.logger.warn(
+          'MCP is enabled but WAHA_MCP_ALLOWED_SESSIONS is not configured or empty. ' +
+            'All MCP session access will be blocked. Configure WAHA_MCP_ALLOWED_SESSIONS to allow specific sessions.',
+        );
+      } else {
+        this.logger.log(
+          `MCP allowlist configured with ${
+            allowedSessions.length
+          } session(s): ${allowedSessions.join(', ')}`,
+        );
+      }
     }
   }
 }
