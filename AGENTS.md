@@ -109,6 +109,14 @@ This guide summarizes how to explore, modify, and validate the WhatsApp HTTP API
 5. Capture any assumptions or open questions for the user, especially when
    touching configs, introducing dependencies, or modifying public APIs.
 
+## Build & Validate
+
+- Run `yarn build` from the repo root to ensure TypeScript compiles cleanly before baking any containers.
+- Build the runtime image locally with `docker build -t devlikeapro/waha:latest .`; this is the image tag the compose stack expects.
+- Restart the service stack that lives in `/home/nitsi/waha` via `docker compose -f /home/nitsi/waha/docker-compose.yaml up -d waha` so the refreshed image is picked up.
+- Tail `docker logs waha-waha-1 --tail 200` and wait for `Nest application successfully started` plus session start log lines to confirm WAHA is healthy.
+- If MCP features are relevant, make sure the logs show `WAHA MCP Server initialized successfully` and whichever transports (stdio/http) you enabled.
+
 ## Additional Tips
 
 - Concurrency-sensitive sections (session start/stop) rely on `async-lock`. When
