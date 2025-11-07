@@ -121,6 +121,9 @@ WAHA includes a Model Context Protocol (MCP) server that allows AI assistants to
 - Exposes 7 core WhatsApp operations as MCP tools (send text/image/file, check number, get contact, list/get sessions)
 - Provides session data through MCP resources
 - Disabled by default - enable with `WAHA_MCP_ENABLED=true`
+- Supports dual transport modes:
+  - **Stdio transport**: For local clients like Claude Desktop (default when enabled)
+  - **HTTP transport**: For remote clients via `/mcp` endpoint (enable with `WAHA_MCP_HTTP=true`)
 - See `docs/MCP.md` for detailed documentation
 
 ### Dependencies

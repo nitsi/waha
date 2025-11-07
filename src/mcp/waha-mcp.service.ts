@@ -1,6 +1,8 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
-import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio';
+import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp';
+import { Request, Response } from 'express';
 import { z } from 'zod';
 import { SessionManager } from '@waha/core/abc/manager.abc';
 import {
@@ -15,6 +17,7 @@ import { ContactQuery } from '@waha/structures/contacts.dto';
 export class WahaMcpService implements OnModuleInit {
   private readonly logger = new Logger(WahaMcpService.name);
   private mcpServer: McpServer;
+  private enabledTransports: string[] = [];
 
   constructor(private sessionManager: SessionManager) {}
 
@@ -35,10 +38,61 @@ export class WahaMcpService implements OnModuleInit {
     this.registerResources();
     this.registerPrompts();
 
-    // Connect via stdio for local process communication
-    const transport = new StdioServerTransport();
-    await this.mcpServer.connect(transport);
-    this.logger.log('WAHA MCP Server initialized successfully');
+    // Determine which transports to enable
+    const enableStdio = process.env.WAHA_MCP_STDIO !== 'false'; // Default: enabled
+    const enableHttp = process.env.WAHA_MCP_HTTP === 'true'; // Default: disabled
+
+    // Connect via stdio for local process communication (like Claude Desktop)
+    if (enableStdio) {
+      try {
+        const transport = new StdioServerTransport();
+        await this.mcpServer.connect(transport);
+        this.enabledTransports.push('stdio');
+        this.logger.log('WAHA MCP Server stdio transport initialized');
+      } catch (error) {
+        this.logger.warn('Failed to initialize stdio transport (this is normal if not running as subprocess)', error);
+      }
+    }
+
+    // HTTP transport is handled via controller
+    if (enableHttp) {
+      this.enabledTransports.push('http');
+      this.logger.log('WAHA MCP Server HTTP transport enabled at /mcp');
+    }
+
+    this.logger.log(`WAHA MCP Server initialized successfully with transports: ${this.enabledTransports.join(', ')}`);
+  }
+
+  /**
+   * Handle HTTP requests to the MCP endpoint
+   * Creates a new transport for each request to prevent request ID collisions
+   */
+  async handleHttpRequest(req: Request, res: Response) {
+    if (!this.mcpServer) {
+      res.status(503).json({ error: 'MCP server not initialized' });
+      return;
+    }
+
+    const transport = new StreamableHTTPServerTransport({
+      sessionIdGenerator: undefined, // No session management needed for stateless use
+      enableJsonResponse: true,
+    });
+
+    // Clean up transport when response closes
+    res.on('close', () => {
+      transport.close();
+    });
+
+    try {
+      // Create a temporary connection for this request
+      await this.mcpServer.connect(transport);
+      await transport.handleRequest(req, res, req.body);
+    } catch (error) {
+      this.logger.error('Error handling MCP HTTP request', error);
+      if (!res.headersSent) {
+        res.status(500).json({ error: 'Internal server error' });
+      }
+    }
   }
 
   private registerTools() {
