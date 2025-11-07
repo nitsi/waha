@@ -56,10 +56,10 @@ export class WahaMcpService implements OnModuleInit {
       version: '1.0.0',
     });
 
-    this.setupRequestLogging();
     this.registerTools();
     this.registerResources();
     this.registerPrompts();
+    this.setupRequestLogging();
 
     // Determine which transports to enable
     const enableStdio = process.env.WAHA_MCP_STDIO !== 'false'; // Default: enabled
@@ -122,29 +122,46 @@ export class WahaMcpService implements OnModuleInit {
   }
 
   private setupRequestLogging() {
-    // Hook into tools/list request to log when client discovers tools
-    this.mcpServer.setRequestHandler(
-      'tools/list',
-      async () => {
-        this.logger.log('MCP client is discovering available tools');
-        // Return default tools list (handled by SDK)
-        const tools = await this.mcpServer.getTools();
-        this.logger.log(`Returned ${tools.length} tools to MCP client`);
-        return { tools };
-      }
-    );
+    if (!this.mcpServer) {
+      return;
+    }
 
-    // Hook into resources/list request to log when client discovers resources
-    this.mcpServer.setRequestHandler(
-      'resources/list',
-      async () => {
-        this.logger.log('MCP client is discovering available resources');
-        // Return default resources list (handled by SDK)
-        const resources = await this.mcpServer.getResources();
-        this.logger.log(`Returned ${resources.length} resources to MCP client`);
-        return { resources };
-      }
-    );
+    const server = (this.mcpServer as any).server;
+    const handlers: Map<string, any> | undefined = server?._requestHandlers;
+    if (!(handlers instanceof Map)) {
+      this.logger.warn('MCP SDK does not expose request handlers; skipping MCP request logging hooks');
+      return;
+    }
+
+    this.wrapRequestHandler(handlers, 'tools/list', async (original, request, extra) => {
+      this.logger.log('MCP client is discovering available tools');
+      const response = await original(request, extra);
+      const tools = Array.isArray(response?.tools) ? response.tools : [];
+      this.logger.log(`Returned ${tools.length} tools to MCP client`);
+      return response;
+    });
+
+    this.wrapRequestHandler(handlers, 'resources/list', async (original, request, extra) => {
+      this.logger.log('MCP client is discovering available resources');
+      const response = await original(request, extra);
+      const resources = Array.isArray(response?.resources) ? response.resources : [];
+      this.logger.log(`Returned ${resources.length} resources to MCP client`);
+      return response;
+    });
+  }
+
+  private wrapRequestHandler(
+    handlers: Map<string, any>,
+    method: string,
+    wrapper: (original: (req?: any, extra?: any) => Promise<any>, request: any, extra: any) => Promise<any>,
+  ) {
+    const original = handlers.get(method);
+    if (typeof original !== 'function') {
+      this.logger.warn(`MCP handler for ${method} not found; skipping logging hook`);
+      return;
+    }
+
+    handlers.set(method, (request: any, extra: any) => wrapper(original, request, extra));
   }
 
   private registerTools() {
