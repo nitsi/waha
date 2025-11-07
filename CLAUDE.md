@@ -112,6 +112,16 @@ Environment configuration via `.env` file (see `.env.example`):
 - Media storage backend (WAHA_MEDIA_STORAGE: LOCAL/S3/POSTGRESQL)
 - Session storage backend (PostgreSQL/MongoDB URLs)
 - Webhooks, proxy, logging settings
+- MCP server (WAHA_MCP_ENABLED: true/false)
+
+### MCP Server Integration
+
+WAHA includes a Model Context Protocol (MCP) server that allows AI assistants to interact with WhatsApp:
+- Located in `src/mcp/` directory
+- Exposes 7 core WhatsApp operations as MCP tools (send text/image/file, check number, get contact, list/get sessions)
+- Provides session data through MCP resources
+- Disabled by default - enable with `WAHA_MCP_ENABLED=true`
+- See `docs/MCP.md` for detailed documentation
 
 ### Dependencies
 
