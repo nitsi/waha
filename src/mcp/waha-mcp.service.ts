@@ -1,4 +1,9 @@
-import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import {
+  Injectable,
+  Logger,
+  OnModuleInit,
+  ForbiddenException,
+} from '@nestjs/common';
 import { Request, Response } from 'express';
 import { z } from 'zod';
 import { SessionManager } from '@waha/core/abc/manager.abc';
@@ -9,6 +14,7 @@ import {
   CheckNumberStatusQuery,
 } from '@waha/structures/chatting.dto';
 import { ContactQuery } from '@waha/structures/contacts.dto';
+import { WhatsappConfigService } from '@waha/config.service';
 
 @Injectable()
 export class WahaMcpService implements OnModuleInit {
@@ -19,12 +25,17 @@ export class WahaMcpService implements OnModuleInit {
   private StdioServerTransportClass: any;
   private StreamableHTTPServerTransportClass: any;
 
-  constructor(private sessionManager: SessionManager) {}
+  constructor(
+    private sessionManager: SessionManager,
+    private configService: WhatsappConfigService,
+  ) {}
 
   async onModuleInit() {
     const enableMcp = process.env.WAHA_MCP_ENABLED === 'true';
     if (!enableMcp) {
-      this.logger.log('MCP server is disabled. Set WAHA_MCP_ENABLED=true to enable.');
+      this.logger.log(
+        'MCP server is disabled. Set WAHA_MCP_ENABLED=true to enable.',
+      );
       return;
     }
 
@@ -40,9 +51,14 @@ export class WahaMcpService implements OnModuleInit {
       // MCP SDK exports McpServer (not Server)
       this.McpServer = McpSdk.McpServer;
       this.StdioServerTransportClass = StdioTransportSdk.StdioServerTransport;
-      this.StreamableHTTPServerTransportClass = HttpTransportSdk.StreamableHTTPServerTransport;
+      this.StreamableHTTPServerTransportClass =
+        HttpTransportSdk.StreamableHTTPServerTransport;
 
-      if (!this.McpServer || !this.StdioServerTransportClass || !this.StreamableHTTPServerTransportClass) {
+      if (
+        !this.McpServer ||
+        !this.StdioServerTransportClass ||
+        !this.StreamableHTTPServerTransportClass
+      ) {
         this.logger.error('Could not load required MCP SDK classes');
         return;
       }
@@ -71,9 +87,14 @@ export class WahaMcpService implements OnModuleInit {
         const transport = new this.StdioServerTransportClass();
         await this.mcpServer.connect(transport);
         this.enabledTransports.push('stdio');
-        this.logger.log('WAHA MCP Server stdio transport initialized - client connected');
+        this.logger.log(
+          'WAHA MCP Server stdio transport initialized - client connected',
+        );
       } catch (error) {
-        this.logger.warn('Failed to initialize stdio transport (this is normal if not running as subprocess)', error);
+        this.logger.warn(
+          'Failed to initialize stdio transport (this is normal if not running as subprocess)',
+          error,
+        );
       }
     }
 
@@ -83,7 +104,11 @@ export class WahaMcpService implements OnModuleInit {
       this.logger.log('WAHA MCP Server HTTP transport enabled at /mcp');
     }
 
-    this.logger.log(`WAHA MCP Server initialized successfully with transports: ${this.enabledTransports.join(', ')}`);
+    this.logger.log(
+      `WAHA MCP Server initialized successfully with transports: ${this.enabledTransports.join(
+        ', ',
+      )}`,
+    );
   }
 
   /**
@@ -96,7 +121,10 @@ export class WahaMcpService implements OnModuleInit {
       return;
     }
 
-    this.logger.log(`New MCP HTTP client connection from ${req.ip || req.socket.remoteAddress}`);
+    this.logger.log(
+      `New MCP HTTP client connection from ${req.ip ||
+        req.socket.remoteAddress}`,
+    );
 
     const transport = new this.StreamableHTTPServerTransportClass({
       sessionIdGenerator: undefined, // No session management needed for stateless use
@@ -121,6 +149,32 @@ export class WahaMcpService implements OnModuleInit {
     }
   }
 
+  /**
+   * Assert that a session is allowed for MCP access.
+   * Throws ForbiddenException if the session is not in the allowlist.
+   * @param sessionName - The session name to check
+   * @throws ForbiddenException if session is not allowed
+   */
+  private assertMcpSessionAllowed(sessionName: string): void {
+    if (!this.configService.isMcpSessionAllowed(sessionName)) {
+      const allowedSessions = this.configService.getMcpAllowedSessions();
+      const allowedList =
+        allowedSessions && allowedSessions.length > 0
+          ? allowedSessions.join(', ')
+          : 'none configured';
+
+      this.logger.warn(
+        `MCP access denied for session "${sessionName}". Allowed sessions: ${allowedList}`,
+      );
+
+      throw new ForbiddenException(
+        `Session "${sessionName}" is not allowed for MCP access. ` +
+          `Allowed sessions: ${allowedList}. ` +
+          `Configure WAHA_MCP_ALLOWED_SESSIONS to grant access.`,
+      );
+    }
+  }
+
   private setupRequestLogging() {
     if (!this.mcpServer) {
       return;
@@ -129,39 +183,59 @@ export class WahaMcpService implements OnModuleInit {
     const server = (this.mcpServer as any).server;
     const handlers: Map<string, any> | undefined = server?._requestHandlers;
     if (!(handlers instanceof Map)) {
-      this.logger.warn('MCP SDK does not expose request handlers; skipping MCP request logging hooks');
+      this.logger.warn(
+        'MCP SDK does not expose request handlers; skipping MCP request logging hooks',
+      );
       return;
     }
 
-    this.wrapRequestHandler(handlers, 'tools/list', async (original, request, extra) => {
-      this.logger.log('MCP client is discovering available tools');
-      const response = await original(request, extra);
-      const tools = Array.isArray(response?.tools) ? response.tools : [];
-      this.logger.log(`Returned ${tools.length} tools to MCP client`);
-      return response;
-    });
+    this.wrapRequestHandler(
+      handlers,
+      'tools/list',
+      async (original, request, extra) => {
+        this.logger.log('MCP client is discovering available tools');
+        const response = await original(request, extra);
+        const tools = Array.isArray(response?.tools) ? response.tools : [];
+        this.logger.log(`Returned ${tools.length} tools to MCP client`);
+        return response;
+      },
+    );
 
-    this.wrapRequestHandler(handlers, 'resources/list', async (original, request, extra) => {
-      this.logger.log('MCP client is discovering available resources');
-      const response = await original(request, extra);
-      const resources = Array.isArray(response?.resources) ? response.resources : [];
-      this.logger.log(`Returned ${resources.length} resources to MCP client`);
-      return response;
-    });
+    this.wrapRequestHandler(
+      handlers,
+      'resources/list',
+      async (original, request, extra) => {
+        this.logger.log('MCP client is discovering available resources');
+        const response = await original(request, extra);
+        const resources = Array.isArray(response?.resources)
+          ? response.resources
+          : [];
+        this.logger.log(`Returned ${resources.length} resources to MCP client`);
+        return response;
+      },
+    );
   }
 
   private wrapRequestHandler(
     handlers: Map<string, any>,
     method: string,
-    wrapper: (original: (req?: any, extra?: any) => Promise<any>, request: any, extra: any) => Promise<any>,
+    wrapper: (
+      original: (req?: any, extra?: any) => Promise<any>,
+      request: any,
+      extra: any,
+    ) => Promise<any>,
   ) {
     const original = handlers.get(method);
     if (typeof original !== 'function') {
-      this.logger.warn(`MCP handler for ${method} not found; skipping logging hook`);
+      this.logger.warn(
+        `MCP handler for ${method} not found; skipping logging hook`,
+      );
       return;
     }
 
-    handlers.set(method, (request: any, extra: any) => wrapper(original, request, extra));
+    handlers.set(method, (request: any, extra: any) =>
+      wrapper(original, request, extra),
+    );
   }
 
   private registerTools() {
@@ -173,7 +247,9 @@ export class WahaMcpService implements OnModuleInit {
         description: 'Send a text message via WhatsApp',
         inputSchema: {
           session: z.string().describe('Session name'),
-          chatId: z.string().describe('Chat ID (phone number with @c.us or group ID)'),
+          chatId: z
+            .string()
+            .describe('Chat ID (phone number with @c.us or group ID)'),
           text: z.string().describe('Message text'),
         },
         outputSchema: {
@@ -185,6 +261,7 @@ export class WahaMcpService implements OnModuleInit {
       },
       async ({ session, chatId, text }) => {
         try {
+          this.assertMcpSessionAllowed(session);
           const whatsapp = await this.sessionManager.getWorkingSession(session);
           const request = new MessageTextRequest();
           request.session = session;
@@ -204,7 +281,8 @@ export class WahaMcpService implements OnModuleInit {
             structuredContent: output,
           };
         } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : String(error);
+          const errorMsg =
+            error instanceof Error ? error.message : String(error);
           return {
             content: [{ type: 'text', text: `Error: ${errorMsg}` }],
             isError: true,
@@ -222,27 +300,59 @@ export class WahaMcpService implements OnModuleInit {
         inputSchema: {
           session: z.string().describe('Session name'),
           chatId: z.string().describe('Chat ID'),
-          fileUrl: z.string().optional().describe('Image URL'),
-          fileData: z.string().optional().describe('Base64 encoded image'),
-          mimetype: z.string().optional().describe('MIME type'),
-          filename: z.string().optional().describe('File name'),
-          caption: z.string().optional().describe('Image caption'),
+          fileUrl: z
+            .string()
+            .optional()
+            .describe('Image URL'),
+          fileData: z
+            .string()
+            .optional()
+            .describe('Base64 encoded image'),
+          mimetype: z
+            .string()
+            .optional()
+            .describe('MIME type'),
+          filename: z
+            .string()
+            .optional()
+            .describe('File name'),
+          caption: z
+            .string()
+            .optional()
+            .describe('Image caption'),
         },
         outputSchema: {
           id: z.string(),
           timestamp: z.number().optional(),
         },
       },
-      async ({ session, chatId, fileUrl, fileData, mimetype, filename, caption }) => {
+      async ({
+        session,
+        chatId,
+        fileUrl,
+        fileData,
+        mimetype,
+        filename,
+        caption,
+      }) => {
         try {
+          this.assertMcpSessionAllowed(session);
           const whatsapp = await this.sessionManager.getWorkingSession(session);
           const request = new MessageImageRequest();
           request.session = session;
           request.chatId = chatId;
           if (fileUrl) {
-            request.file = { url: fileUrl, mimetype: mimetype || 'image/jpeg', filename };
+            request.file = {
+              url: fileUrl,
+              mimetype: mimetype || 'image/jpeg',
+              filename,
+            };
           } else if (fileData) {
-            request.file = { data: fileData, mimetype: mimetype || 'image/jpeg', filename };
+            request.file = {
+              data: fileData,
+              mimetype: mimetype || 'image/jpeg',
+              filename,
+            };
           }
           request.caption = caption;
           const result = await whatsapp.sendImage(request);
@@ -257,7 +367,8 @@ export class WahaMcpService implements OnModuleInit {
             structuredContent: output,
           };
         } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : String(error);
+          const errorMsg =
+            error instanceof Error ? error.message : String(error);
           return {
             content: [{ type: 'text', text: `Error: ${errorMsg}` }],
             isError: true,
@@ -275,19 +386,40 @@ export class WahaMcpService implements OnModuleInit {
         inputSchema: {
           session: z.string().describe('Session name'),
           chatId: z.string().describe('Chat ID'),
-          fileUrl: z.string().optional().describe('File URL'),
-          fileData: z.string().optional().describe('Base64 encoded file'),
+          fileUrl: z
+            .string()
+            .optional()
+            .describe('File URL'),
+          fileData: z
+            .string()
+            .optional()
+            .describe('Base64 encoded file'),
           mimetype: z.string().describe('MIME type (required)'),
-          filename: z.string().optional().describe('File name'),
-          caption: z.string().optional().describe('File caption'),
+          filename: z
+            .string()
+            .optional()
+            .describe('File name'),
+          caption: z
+            .string()
+            .optional()
+            .describe('File caption'),
         },
         outputSchema: {
           id: z.string(),
           timestamp: z.number().optional(),
         },
       },
-      async ({ session, chatId, fileUrl, fileData, mimetype, filename, caption }) => {
+      async ({
+        session,
+        chatId,
+        fileUrl,
+        fileData,
+        mimetype,
+        filename,
+        caption,
+      }) => {
         try {
+          this.assertMcpSessionAllowed(session);
           const whatsapp = await this.sessionManager.getWorkingSession(session);
           const request = new MessageFileRequest();
           request.session = session;
@@ -310,7 +442,8 @@ export class WahaMcpService implements OnModuleInit {
             structuredContent: output,
           };
         } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : String(error);
+          const errorMsg =
+            error instanceof Error ? error.message : String(error);
           return {
             content: [{ type: 'text', text: `Error: ${errorMsg}` }],
             isError: true,
@@ -336,6 +469,7 @@ export class WahaMcpService implements OnModuleInit {
       },
       async ({ session, phone }) => {
         try {
+          this.assertMcpSessionAllowed(session);
           const whatsapp = await this.sessionManager.getWorkingSession(session);
           const query = new CheckNumberStatusQuery();
           query.session = session;
@@ -352,7 +486,8 @@ export class WahaMcpService implements OnModuleInit {
             structuredContent: output,
           };
         } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : String(error);
+          const errorMsg =
+            error instanceof Error ? error.message : String(error);
           return {
             content: [{ type: 'text', text: `Error: ${errorMsg}` }],
             isError: true,
@@ -369,7 +504,9 @@ export class WahaMcpService implements OnModuleInit {
         description: 'Get contact information from WhatsApp',
         inputSchema: {
           session: z.string().describe('Session name'),
-          contactId: z.string().describe('Contact ID (phone number with @c.us)'),
+          contactId: z
+            .string()
+            .describe('Contact ID (phone number with @c.us)'),
         },
         outputSchema: {
           id: z.string(),
@@ -380,6 +517,7 @@ export class WahaMcpService implements OnModuleInit {
       },
       async ({ session, contactId }) => {
         try {
+          this.assertMcpSessionAllowed(session);
           const whatsapp = await this.sessionManager.getWorkingSession(session);
           const query = new ContactQuery();
           query.session = session;
@@ -398,7 +536,8 @@ export class WahaMcpService implements OnModuleInit {
             structuredContent: output,
           };
         } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : String(error);
+          const errorMsg =
+            error instanceof Error ? error.message : String(error);
           return {
             content: [{ type: 'text', text: `Error: ${errorMsg}` }],
             isError: true,
@@ -414,20 +553,29 @@ export class WahaMcpService implements OnModuleInit {
         title: 'List Sessions',
         description: 'List all WhatsApp sessions',
         inputSchema: {
-          all: z.boolean().optional().describe('Include stopped sessions'),
+          all: z
+            .boolean()
+            .optional()
+            .describe('Include stopped sessions'),
         },
         outputSchema: {
-          sessions: z.array(z.object({
-            name: z.string(),
-            status: z.string(),
-          })),
+          sessions: z.array(
+            z.object({
+              name: z.string(),
+              status: z.string(),
+            }),
+          ),
         },
       },
       async ({ all }) => {
         try {
           const sessions = await this.sessionManager.getSessions(all);
+          // Filter sessions based on MCP allowlist
+          const allowedSessions = sessions.filter((s) =>
+            this.configService.isMcpSessionAllowed(s.name),
+          );
           const output = {
-            sessions: sessions.map(s => ({
+            sessions: allowedSessions.map((s) => ({
               name: s.name,
               status: s.status,
             })),
@@ -438,7 +586,8 @@ export class WahaMcpService implements OnModuleInit {
             structuredContent: output,
           };
         } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : String(error);
+          const errorMsg =
+            error instanceof Error ? error.message : String(error);
           return {
             content: [{ type: 'text', text: `Error: ${errorMsg}` }],
             isError: true,
@@ -459,14 +608,17 @@ export class WahaMcpService implements OnModuleInit {
         outputSchema: {
           name: z.string(),
           status: z.string(),
-          me: z.object({
-            id: z.string().optional(),
-            pushName: z.string().optional(),
-          }).optional(),
+          me: z
+            .object({
+              id: z.string().optional(),
+              pushName: z.string().optional(),
+            })
+            .optional(),
         },
       },
       async ({ session }) => {
         try {
+          this.assertMcpSessionAllowed(session);
           const sessionInfo = await this.sessionManager.getSessionInfo(session);
           if (!sessionInfo) {
             throw new Error('Session not found');
@@ -483,7 +635,8 @@ export class WahaMcpService implements OnModuleInit {
             structuredContent: output,
           };
         } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : String(error);
+          const errorMsg =
+            error instanceof Error ? error.message : String(error);
           return {
             content: [{ type: 'text', text: `Error: ${errorMsg}` }],
             isError: true,
@@ -508,26 +661,35 @@ export class WahaMcpService implements OnModuleInit {
       async (uri) => {
         try {
           const sessions = await this.sessionManager.getSessions(false);
-          const data = sessions.map(s => ({
+          // Filter sessions based on MCP allowlist
+          const allowedSessions = sessions.filter((s) =>
+            this.configService.isMcpSessionAllowed(s.name),
+          );
+          const data = allowedSessions.map((s) => ({
             name: s.name,
             status: s.status,
             me: s.me,
           }));
 
           return {
-            contents: [{
-              uri: uri.href,
-              mimeType: 'application/json',
-              text: JSON.stringify(data, null, 2),
-            }],
+            contents: [
+              {
+                uri: uri.href,
+                mimeType: 'application/json',
+                text: JSON.stringify(data, null, 2),
+              },
+            ],
           };
         } catch (error) {
-          const errorMsg = error instanceof Error ? error.message : String(error);
+          const errorMsg =
+            error instanceof Error ? error.message : String(error);
           return {
-            contents: [{
-              uri: uri.href,
-              text: `Error: ${errorMsg}`,
-            }],
+            contents: [
+              {
+                uri: uri.href,
+                text: `Error: ${errorMsg}`,
+              },
+            ],
           };
         }
       },
@@ -546,7 +708,9 @@ export class WahaMcpService implements OnModuleInit {
         argsSchema: {
           session: z.string().describe('Session name'),
           recipient: z.string().describe('Recipient phone number or chat ID'),
-          messageType: z.enum(['text', 'image', 'file']).describe('Type of message to send'),
+          messageType: z
+            .enum(['text', 'image', 'file'])
+            .describe('Type of message to send'),
         },
       },
       ({ session, recipient, messageType }) => {
@@ -575,13 +739,15 @@ export class WahaMcpService implements OnModuleInit {
         }
 
         return {
-          messages: [{
-            role: 'user',
-            content: {
-              type: 'text',
-              text: instructions,
+          messages: [
+            {
+              role: 'user',
+              content: {
+                type: 'text',
+                text: instructions,
+              },
             },
-          }],
+          ],
         };
       },
     );
