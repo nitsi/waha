@@ -24,6 +24,7 @@
     "test:e2e": "jest --selectProjects e2e",
     "test:e8e": "yarn test:e2e",
     "test:all": "yarn test:unit && yarn test:e8e",
+    "test:mcp-http": "node --test tests/smoke/mcp-http-tools.test.cjs",
     "gows:proto:fetch": "node scripts/gows-proto.js fetch",
     "gows:proto:build": "node scripts/gows-proto.js build",
     "gows:proto": "yarn gows:proto:fetch && yarn gows:proto:build"
