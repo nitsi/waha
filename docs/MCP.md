@@ -20,6 +20,32 @@ The MCP server is disabled by default. To enable it, set the environment variabl
 WAHA_MCP_ENABLED=true
 ```
 
+### Session Access Control
+
+By default, when MCP is enabled without additional configuration, **all MCP session access will be blocked**. You must explicitly configure which sessions MCP clients are allowed to access using the `WAHA_MCP_ALLOWED_SESSIONS` environment variable.
+
+```bash
+# Allow MCP access to specific sessions (comma-separated list)
+WAHA_MCP_ALLOWED_SESSIONS=default,session1,session2
+
+# Example: Allow only the "default" session
+WAHA_MCP_ALLOWED_SESSIONS=default
+```
+
+**Important Notes:**
+- If `WAHA_MCP_ALLOWED_SESSIONS` is not set or is empty, MCP clients will not be able to access any sessions
+- MCP tool calls targeting non-allowed sessions will fail with HTTP 403 Forbidden error
+- The `waha_list_sessions` tool and `waha://sessions` resource will only return sessions that are in the allowlist
+- Session names are case-sensitive and must match exactly
+- This restriction applies to both stdio and HTTP transports
+
+**Example Error Response:**
+```json
+{
+  "error": "Session \"unauthorized-session\" is not allowed for MCP access. Allowed sessions: default, session1. Configure WAHA_MCP_ALLOWED_SESSIONS to grant access."
+}
+```
+
 ### Transport Configuration
 
 WAHA MCP server supports two transport modes:
@@ -184,6 +210,7 @@ To use WAHA MCP server with Claude Desktop, add the following to your Claude Des
       "cwd": "/path/to/waha-2025",
       "env": {
         "WAHA_MCP_ENABLED": "true",
+        "WAHA_MCP_ALLOWED_SESSIONS": "default",
         "WHATSAPP_API_PORT": "3000"
       }
     }
@@ -197,10 +224,11 @@ Replace `/path/to/waha-2025` with the actual path to your WAHA installation.
 
 To use WAHA MCP server with remote MCP clients over HTTP:
 
-1. Enable HTTP transport:
+1. Enable HTTP transport and configure allowed sessions:
 ```bash
 WAHA_MCP_ENABLED=true
 WAHA_MCP_HTTP=true
+WAHA_MCP_ALLOWED_SESSIONS=default,session1
 ```
 
 2. Connect using the MCP HTTP endpoint:
@@ -225,11 +253,21 @@ code --add-mcp "{\"name\":\"waha\",\"type\":\"http\",\"url\":\"http://localhost:
 
 ### Security Considerations
 
-When enabling HTTP transport:
+When enabling MCP server:
+
+**Session Access Control:**
+- Always configure `WAHA_MCP_ALLOWED_SESSIONS` to restrict which sessions MCP clients can access
+- Only include sessions that should be accessible to AI assistants
+- Session names are case-sensitive and must match exactly
+- Regularly review and update the allowlist as needed
+
+**HTTP Transport Security:**
 - Consider using WAHA's API key authentication (`WAHA_API_KEY`)
+- Or use dedicated MCP API key (`WAHA_MCP_HTTP_API_KEY`) for isolated MCP access control
 - Use HTTPS in production environments
 - Restrict network access to trusted clients only
 - Consider using a reverse proxy (nginx, Caddy) for additional security
+- Monitor logs for unauthorized access attempts
 
 ## Architecture
 
@@ -277,16 +315,18 @@ The same tools are available through both stdio and HTTP transports.
 ## Limitations
 
 - Some advanced WAHA features (groups, status, channels) are not yet exposed as tools
-- HTTP transport does not currently support authentication (consider using reverse proxy or network restrictions)
+- Session allowlist uses exact name matching (wildcards/patterns not supported)
 
 ## Future Enhancements
 
 Planned improvements include:
 
 1. ~~HTTP transport support for remote MCP clients~~ ✅ Implemented
-2. Additional tools for group management
-3. Tools for status/stories management
-4. Webhook integration with MCP notifications
-5. Session lifecycle management tools (create, start, stop)
-6. Message history and chat management resources
-7. Authentication support for HTTP transport
+2. ~~Authentication support for HTTP transport~~ ✅ Implemented
+3. ~~Session access control and allowlist~~ ✅ Implemented
+4. Additional tools for group management
+5. Tools for status/stories management
+6. Webhook integration with MCP notifications
+7. Session lifecycle management tools (create, start, stop)
+8. Message history and chat management resources
+9. Wildcard/pattern support for session allowlist
