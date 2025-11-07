@@ -1,7 +1,9 @@
 import { All, Controller, Req, Res } from '@nestjs/common';
+import { ApiSecurity } from '@nestjs/swagger';
 import { Request, Response } from 'express';
 import { WahaMcpService } from './waha-mcp.service';
 
+@ApiSecurity('api_key')
 @Controller('mcp')
 export class WahaMcpController {
   constructor(private readonly mcpService: WahaMcpService) {}
