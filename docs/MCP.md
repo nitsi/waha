@@ -20,6 +20,26 @@ The MCP server is disabled by default. To enable it, set the environment variabl
 WAHA_MCP_ENABLED=true
 ```
 
+### Transport Configuration
+
+WAHA MCP server supports two transport modes:
+
+#### Stdio Transport (Default)
+For local process communication (e.g., Claude Desktop):
+```bash
+WAHA_MCP_ENABLED=true
+WAHA_MCP_STDIO=true  # Default: enabled when MCP is enabled
+```
+
+#### HTTP Transport
+For remote MCP clients over network:
+```bash
+WAHA_MCP_ENABLED=true
+WAHA_MCP_HTTP=true  # Default: disabled
+```
+
+Both transports can be enabled simultaneously. When HTTP transport is enabled, the MCP server is available at the `/mcp` endpoint.
+
 ## Available Tools
 
 The WAHA MCP server exposes the following tools:
@@ -146,7 +166,9 @@ Guides through sending a WhatsApp message with step-by-step instructions.
 - `recipient` (string): Recipient phone number or chat ID
 - `messageType` (enum): Type of message to send (`text`, `image`, `file`)
 
-## Using WAHA MCP with Claude Desktop
+## Using WAHA MCP Server
+
+### With Claude Desktop (Stdio Transport)
 
 To use WAHA MCP server with Claude Desktop, add the following to your Claude Desktop configuration file:
 
@@ -171,6 +193,44 @@ To use WAHA MCP server with Claude Desktop, add the following to your Claude Des
 
 Replace `/path/to/waha-2025` with the actual path to your WAHA installation.
 
+### With Remote Clients (HTTP Transport)
+
+To use WAHA MCP server with remote MCP clients over HTTP:
+
+1. Enable HTTP transport:
+```bash
+WAHA_MCP_ENABLED=true
+WAHA_MCP_HTTP=true
+```
+
+2. Connect using the MCP HTTP endpoint:
+```
+http://localhost:3000/mcp
+```
+
+#### Example with MCP Inspector:
+```bash
+npx @modelcontextprotocol/inspector http://localhost:3000/mcp
+```
+
+#### Example with Claude Code:
+```bash
+claude mcp add --transport http waha http://localhost:3000/mcp
+```
+
+#### Example with VS Code:
+```bash
+code --add-mcp "{\"name\":\"waha\",\"type\":\"http\",\"url\":\"http://localhost:3000/mcp\"}"
+```
+
+### Security Considerations
+
+When enabling HTTP transport:
+- Consider using WAHA's API key authentication (`WAHA_API_KEY`)
+- Use HTTPS in production environments
+- Restrict network access to trusted clients only
+- Consider using a reverse proxy (nginx, Caddy) for additional security
+
 ## Architecture
 
 The MCP server is implemented as a NestJS module that:
@@ -178,7 +238,9 @@ The MCP server is implemented as a NestJS module that:
 1. Integrates with WAHA's existing `SessionManager`
 2. Exposes WhatsApp operations as MCP tools with proper schemas
 3. Provides session data through MCP resources
-4. Uses stdio transport for local process communication
+4. Supports dual transport modes:
+   - **Stdio transport**: For local process communication (Claude Desktop)
+   - **HTTP transport**: For remote MCP clients over network (via `/mcp` endpoint)
 
 The implementation follows WAHA's existing patterns:
 - Uses the same DTOs and validation
@@ -186,11 +248,21 @@ The implementation follows WAHA's existing patterns:
 - Maintains consistent error handling
 - Supports all configured WhatsApp engines (WEBJS, NOWEB, GOWS)
 
+### HTTP Transport Implementation
+
+The HTTP transport implementation:
+- Creates a new `StreamableHTTPServerTransport` instance per request to prevent request ID collisions
+- Handles POST requests to the `/mcp` endpoint
+- Supports stateless operation (no session management required)
+- Returns JSON responses with proper error handling
+- Automatically cleans up transport when the response closes
+
 ## Development
 
 The MCP server code is located in `src/mcp/`:
 
-- `waha-mcp.service.ts`: Main MCP server implementation
+- `waha-mcp.service.ts`: Main MCP server implementation with dual transport support
+- `waha-mcp.controller.ts`: HTTP endpoint controller for MCP requests
 - `waha-mcp.module.ts`: NestJS module definition
 
 To add new tools:
@@ -200,19 +272,21 @@ To add new tools:
 3. Implement the handler using existing WAHA services
 4. Add error handling with try/catch
 
+The same tools are available through both stdio and HTTP transports.
+
 ## Limitations
 
-- Currently supports stdio transport only (for local/desktop use)
-- HTTP transport for remote MCP clients is planned for future releases
 - Some advanced WAHA features (groups, status, channels) are not yet exposed as tools
+- HTTP transport does not currently support authentication (consider using reverse proxy or network restrictions)
 
 ## Future Enhancements
 
 Planned improvements include:
 
-1. HTTP transport support for remote MCP clients
+1. ~~HTTP transport support for remote MCP clients~~ ✅ Implemented
 2. Additional tools for group management
 3. Tools for status/stories management
 4. Webhook integration with MCP notifications
 5. Session lifecycle management tools (create, start, stop)
 6. Message history and chat management resources
+7. Authentication support for HTTP transport

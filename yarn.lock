@@ -2194,7 +2194,7 @@ __metadata:
   languageName: node
   linkType: hard
 
-"@modelcontextprotocol/sdk@npm:^1.21.0":
+"@modelcontextprotocol/sdk@npm:1.21.0":
   version: 1.21.0
   resolution: "@modelcontextprotocol/sdk@npm:1.21.0"
   dependencies:
@@ -12601,7 +12601,7 @@ __metadata:
     "@grpc/grpc-js": ^1.13.4
     "@grpc/proto-loader": ^0.7.13
     "@liaoliaots/nestjs-redis": ^9
-    "@modelcontextprotocol/sdk": ^1.21.0
+    "@modelcontextprotocol/sdk": 1.21.0
     "@nestjs/axios": ^3.0.2
     "@nestjs/bullmq": ^11.0.2
     "@nestjs/cli": ^11.0.0
