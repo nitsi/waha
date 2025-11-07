@@ -58,6 +58,7 @@ import { VersionController } from '../api/version.controller';
 import { WhatsappConfigService } from '../config.service';
 import { WahaMcpController } from '@waha/mcp/waha-mcp.controller';
 import { WahaMcpService } from '@waha/mcp/waha-mcp.service';
+import { McpHttpAuthGuard } from '@waha/mcp/mcp-http-auth.guard';
 import { SessionManager } from './abc/manager.abc';
 import { WAHAHealthCheckService } from './abc/WAHAHealthCheckService';
 import { ApiKeyAuthFactory } from './auth/ApiKeyAuthFactory';
@@ -201,6 +202,7 @@ const PROVIDERS = [
   },
   ChannelsInfoServiceCore,
   WahaMcpService,
+  McpHttpAuthGuard,
   ...PROVIDERS_BASE,
 ];
 
@@ -243,7 +245,7 @@ export class AppModuleCore {
     consumer
       .apply(AuthMiddleware)
       .exclude(...exclude)
-      .forRoutes('api', 'health', 'ws', 'mcp');
+      .forRoutes('api', 'health', 'ws');
     const dashboardCredentials = this.dashboardConfig.credentials;
     if (dashboardCredentials) {
       const username = dashboardCredentials[0];
