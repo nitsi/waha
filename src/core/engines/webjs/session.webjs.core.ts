@@ -165,8 +165,7 @@ import {
   PollVote as WebjsPollVote,
   Message,
   MessageMedia,
-  Poll,
-  PollVote,
+
   Reaction,
   WAState,
 } from 'whatsapp-web.js';
@@ -498,6 +497,11 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
         this.logger.debug({ event: log }, `WEBJS event`);
       });
     }
+
+    // Also listen for vote_update specifically since it may not be in Events enum
+    this.whatsapp.on('vote_update', (...data: any[]) => {
+      this.logger.info({ data }, 'DEBUG: vote_update event fired directly');
+    });
   }
 
   protected listenConnectionEvents() {
@@ -510,9 +514,32 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
       this.lastQRDate = new Date();
     });
 
-    this.whatsapp.on(Events.READY, () => {
+    this.whatsapp.on(Events.READY, async () => {
+      this.status = WAHASessionStatus.WORKING;
       this.qr.save('');
       this.logger.info(`Session '${this.name}' is ready!`);
+
+      // Log WhatsApp Web version for debugging poll vote issues
+      try {
+        const wwebVersion = await this.whatsapp.getWWebVersion();
+        this.logger.info({ wwebVersion }, 'WhatsApp Web version');
+
+        // Check if poll vote module is available
+        const pollVoteModuleCheck = await this.whatsapp.pupPage.evaluate(() => {
+          return {
+            // @ts-ignore - WhatsApp Web injects these objects
+            hasAddonPollVoteTable: !!(window as any).Store?.AddonPollVoteTable,
+            // @ts-ignore
+            hasStoreMsg: !!(window as any).Store?.Msg,
+            // @ts-ignore
+            version: (window as any).Debug?.VERSION,
+          };
+        });
+        this.logger.info({ pollVoteModuleCheck }, 'Poll vote module availability check');
+      } catch (err) {
+        this.logger.warn('Failed to check WhatsApp Web version or poll vote module');
+        this.logger.warn(err);
+      }
     });
 
     //
@@ -918,22 +945,7 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
     throw new AvailableInPlusVersion();
   }
 
-  async sendPoll(request: MessagePollRequest) {
-    const chatId = this.ensureSuffix(request.chatId);
-    const options = this.getMessageOptions(request);
 
-    // Create poll using whatsapp-web.js Poll class
-    const poll = new Poll(
-      request.poll.name,
-      request.poll.options,
-      {
-        allowMultipleAnswers: request.poll.multipleAnswers || false,
-        messageSecret: undefined,
-      },
-    );
-
-    return this.whatsapp.sendMessage(chatId, poll, options);
-  }
 
   async sendLocation(request: MessageLocationRequest) {
     const location = new Location(request.latitude, request.longitude, {
@@ -1921,12 +1933,7 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
     );
     this.events2.get(WAHAEvents.MESSAGE_EDITED).switch(messagesEdit$);
 
-    const pollVote$ = fromEvent(this.whatsapp, Events.VOTE_UPDATE);
-    const pollVotes$ = pollVote$.pipe(
-      map(this.toPollVotePayload.bind(this)),
-      filter(Boolean),
-    );
-    this.events2.get(WAHAEvents.POLL_VOTE).switch(pollVotes$);
+
 
     const messageAckWEBJS$ = fromEvent(
       this.whatsapp,
@@ -2080,6 +2087,29 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
     this.events2
       .get(WAHAEvents.CALL_REJECTED)
       .switch(this.callRejected$.asObservable());
+
+    //
+    // Poll Votes
+    //
+    this.logger.info('Setting up vote_update event listener');
+    const voteUpdate$ = fromEvent(this.whatsapp, 'vote_update');
+    const pollVotes$ = voteUpdate$.pipe(
+      map((vote) => {
+        this.logger.info({ vote }, 'WEBJS vote_update event received');
+        return vote;
+      }),
+      map(this.toPollVotePayload.bind(this)),
+      map((payload) => {
+        if (payload) {
+          this.logger.info({ payload }, 'Poll vote processed successfully');
+        } else {
+          this.logger.warn('Poll vote processing returned null');
+        }
+        return payload;
+      }),
+      filter(Boolean),
+    );
+    this.events2.get(WAHAEvents.POLL_VOTE).switch(pollVotes$);
   }
 
   protected async processIncomingMessage(
