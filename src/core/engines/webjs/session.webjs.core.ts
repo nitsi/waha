@@ -903,6 +903,15 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
     if (!request.poll.name || request.poll.name.trim().length === 0) {
       throw new UnprocessableEntityException('Poll name cannot be empty');
     }
+
+    // WhatsApp poll name limit is 255 characters
+    const pollName = request.poll.name.trim();
+    if (pollName.length > 255) {
+      throw new UnprocessableEntityException(
+        `Poll name is too long (${pollName.length} chars). Maximum is 255 characters`,
+      );
+    }
+
     if (!request.poll.options || request.poll.options.length < 2) {
       throw new UnprocessableEntityException('Poll must have at least 2 options');
     }
@@ -910,7 +919,8 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
       throw new UnprocessableEntityException('Poll cannot have more than 12 options');
     }
 
-    // Filter out empty options
+    // Filter out empty options and validate length
+    // WhatsApp poll option limit is 100 characters
     const validOptions = request.poll.options
       .map(opt => opt.trim())
       .filter(opt => opt.length > 0);
@@ -919,10 +929,35 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
       throw new UnprocessableEntityException('Poll must have at least 2 non-empty options');
     }
 
+    // Check each option length - WhatsApp limit is 100 characters per option
+    const tooLongOptions = validOptions
+      .map((opt, idx) => ({ opt, idx, len: opt.length }))
+      .filter(({ len }) => len > 100);
+
+    if (tooLongOptions.length > 0) {
+      const details = tooLongOptions
+        .map(({ idx, len, opt }) =>
+          `  Option ${idx + 1}: ${len} chars - "${opt.substring(0, 50)}..."`
+        )
+        .join('\n');
+      throw new UnprocessableEntityException(
+        `Poll options exceed WhatsApp's 100 character limit:\n${details}`,
+      );
+    }
+
+    // Log poll details for debugging
+    this.logger.debug({
+      pollName,
+      pollNameLength: pollName.length,
+      optionsCount: validOptions.length,
+      optionLengths: validOptions.map(opt => opt.length),
+      multipleAnswers: request.poll.multipleAnswers || false,
+    }, 'Sending poll');
+
     // Create poll using whatsapp-web.js Poll class
     // messageSecret is auto-generated if undefined (see Utils.js line 115-118)
     const poll = new Poll(
-      request.poll.name,
+      pollName,
       validOptions,
       {
         allowMultipleAnswers: request.poll.multipleAnswers || false,
