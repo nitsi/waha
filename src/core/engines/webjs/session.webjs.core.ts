@@ -782,19 +782,7 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
   }
 
 
-  @Activity()
-  async sendPoll(request: MessagePollRequest) {
-    const poll = new Poll(request.poll.name, request.poll.options, {
-      allowMultipleAnswers: request.poll.multipleAnswers,
-      messageSecret: undefined,
-    });
-    const options = this.getMessageOptions(request);
-    return this.whatsapp.sendMessage(
-      this.ensureSuffix(request.chatId),
-      poll,
-      options,
-    );
-  }
+
 
 
   async sendImage(request: MessageImageRequest) {
@@ -906,6 +894,44 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
   }
 
 
+  @Activity()
+  async sendPoll(request: MessagePollRequest) {
+    const chatId = this.ensureSuffix(request.chatId);
+    const options = this.getMessageOptions(request);
+
+    // Validate poll data before creating Poll object
+    if (!request.poll.name || request.poll.name.trim().length === 0) {
+      throw new UnprocessableEntityException('Poll name cannot be empty');
+    }
+    if (!request.poll.options || request.poll.options.length < 2) {
+      throw new UnprocessableEntityException('Poll must have at least 2 options');
+    }
+    if (request.poll.options.length > 12) {
+      throw new UnprocessableEntityException('Poll cannot have more than 12 options');
+    }
+
+    // Filter out empty options
+    const validOptions = request.poll.options
+      .map(opt => opt.trim())
+      .filter(opt => opt.length > 0);
+
+    if (validOptions.length < 2) {
+      throw new UnprocessableEntityException('Poll must have at least 2 non-empty options');
+    }
+
+    // Create poll using whatsapp-web.js Poll class
+    // messageSecret is auto-generated if undefined (see Utils.js line 115-118)
+    const poll = new Poll(
+      request.poll.name,
+      validOptions,
+      {
+        allowMultipleAnswers: request.poll.multipleAnswers || false,
+        messageSecret: undefined,
+      },
+    );
+
+    return this.whatsapp.sendMessage(chatId, poll, options);
+  }
 
   async sendLocation(request: MessageLocationRequest) {
     const location = new Location(request.latitude, request.longitude, {
