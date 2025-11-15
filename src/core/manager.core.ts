@@ -374,6 +374,10 @@ export class SessionManagerCore extends SessionManager implements OnModuleInit {
         status: session.status,
         config: session.sessionConfig,
         me: me,
+        presence: session.presence,
+        timestamps: {
+          activity: session?.getLastActivityTimestamp(),
+        },
       });
     }
 
@@ -402,6 +406,10 @@ export class SessionManagerCore extends SessionManager implements OnModuleInit {
           status: WAHASessionStatus.STOPPED,
           config: config || {},
           me: null,
+          presence: null,
+          timestamps: {
+            activity: null,
+          },
         });
       }
     }
