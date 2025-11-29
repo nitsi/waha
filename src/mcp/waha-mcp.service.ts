@@ -20,6 +20,7 @@ import { WhatsappConfigService } from '@waha/config.service';
 export class WahaMcpService implements OnModuleInit {
   private readonly logger = new Logger(WahaMcpService.name);
   private mcpServer: any; // MCP Server instance
+  private httpTransport: any; // Reusable HTTP transport instance
   private enabledTransports: string[] = [];
   private McpServer: any;
   private StdioServerTransportClass: any;
@@ -100,8 +101,21 @@ export class WahaMcpService implements OnModuleInit {
 
     // HTTP transport is handled via controller
     if (enableHttp) {
-      this.enabledTransports.push('http');
-      this.logger.log('WAHA MCP Server HTTP transport enabled at /mcp');
+      try {
+        // Create and connect a single reusable HTTP transport
+        this.httpTransport = new this.StreamableHTTPServerTransportClass({
+          sessionIdGenerator: undefined, // Stateless mode
+          enableJsonResponse: true,
+        });
+
+        // Connect the HTTP transport once during initialization
+        await this.mcpServer.connect(this.httpTransport);
+
+        this.enabledTransports.push('http');
+        this.logger.log('WAHA MCP Server HTTP transport enabled at /mcp');
+      } catch (error) {
+        this.logger.error('Failed to initialize HTTP transport', error);
+      }
     }
 
     this.logger.log(
@@ -113,34 +127,21 @@ export class WahaMcpService implements OnModuleInit {
 
   /**
    * Handle HTTP requests to the MCP endpoint
-   * Creates a new transport for each request to prevent request ID collisions
+   * Reuses a single transport instance that was connected during initialization
    */
   async handleHttpRequest(req: Request, res: Response) {
-    if (!this.mcpServer) {
-      res.status(503).json({ error: 'MCP server not initialized' });
+    if (!this.httpTransport) {
+      res.status(503).json({ error: 'MCP HTTP transport not initialized' });
       return;
     }
 
     this.logger.log(
-      `New MCP HTTP client connection from ${req.ip ||
-        req.socket.remoteAddress}`,
+      `New MCP HTTP request from ${req.ip || req.socket.remoteAddress}`,
     );
 
-    const transport = new this.StreamableHTTPServerTransportClass({
-      sessionIdGenerator: undefined, // No session management needed for stateless use
-      enableJsonResponse: true,
-    });
-
-    // Clean up transport when response closes
-    res.on('close', () => {
-      transport.close();
-      this.logger.debug('MCP HTTP client connection closed');
-    });
-
     try {
-      // Create a temporary connection for this request
-      await this.mcpServer.connect(transport);
-      await transport.handleRequest(req, res, req.body);
+      // Reuse the connected transport for this request
+      await this.httpTransport.handleRequest(req, res, req.body);
     } catch (error) {
       this.logger.error('Error handling MCP HTTP request', error);
       if (!res.headersSent) {
@@ -173,6 +174,37 @@ export class WahaMcpService implements OnModuleInit {
           `Configure WAHA_MCP_ALLOWED_SESSIONS to grant access.`,
       );
     }
+  }
+
+  /**
+   * Serialize message ID to string.
+   * Handles both WEBJS (object with _serialized) and NOWEB/GOWS (may already be string).
+   */
+  private serializeId(id: any): string {
+    if (typeof id === 'string') {
+      return id;
+    }
+    if (id && typeof id === 'object') {
+      // WEBJS engine returns an object with _serialized property
+      return id._serialized || id.id || String(id);
+    }
+    return String(id);
+  }
+
+  /**
+   * Serialize a field that might be an ID object or string.
+   */
+  private serializeField(field: any): string | undefined {
+    if (!field) {
+      return undefined;
+    }
+    if (typeof field === 'string') {
+      return field;
+    }
+    if (typeof field === 'object' && field._serialized) {
+      return field._serialized;
+    }
+    return String(field);
   }
 
   private setupRequestLogging() {
@@ -270,10 +302,10 @@ export class WahaMcpService implements OnModuleInit {
           const result = await whatsapp.sendText(request);
 
           const output = {
-            id: result.id,
+            id: this.serializeId(result.id),
             timestamp: result.timestamp,
-            from: result.from,
-            to: result.to,
+            from: this.serializeField(result.from),
+            to: this.serializeField(result.to),
           };
 
           return {
@@ -358,7 +390,7 @@ export class WahaMcpService implements OnModuleInit {
           const result = await whatsapp.sendImage(request);
 
           const output = {
-            id: result.id,
+            id: this.serializeId(result.id),
             timestamp: result.timestamp,
           };
 
@@ -433,7 +465,7 @@ export class WahaMcpService implements OnModuleInit {
           const result = await whatsapp.sendFile(request);
 
           const output = {
-            id: result.id,
+            id: this.serializeId(result.id),
             timestamp: result.timestamp,
           };
 
@@ -478,7 +510,7 @@ export class WahaMcpService implements OnModuleInit {
 
           const output = {
             numberExists: result.numberExists,
-            chatId: result.chatId,
+            chatId: this.serializeField(result.chatId),
           };
 
           return {
@@ -525,7 +557,7 @@ export class WahaMcpService implements OnModuleInit {
           const result: any = await whatsapp.getContact(query);
 
           const output = {
-            id: result?.id || contactId,
+            id: this.serializeField(result?.id) || contactId,
             name: result?.name || '',
             pushname: result?.pushname || '',
             isMyContact: result?.isMyContact || false,
@@ -627,7 +659,12 @@ export class WahaMcpService implements OnModuleInit {
           const output = {
             name: sessionInfo.name,
             status: sessionInfo.status,
-            me: sessionInfo.me,
+            me: sessionInfo.me
+              ? {
+                  id: this.serializeField(sessionInfo.me.id),
+                  pushName: sessionInfo.me.pushName,
+                }
+              : undefined,
           };
 
           return {
