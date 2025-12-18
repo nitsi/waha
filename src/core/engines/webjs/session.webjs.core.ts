@@ -821,10 +821,6 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
     );
   }
 
-
-
-
-
   async sendImage(request: MessageImageRequest) {
     const chatId = this.ensureSuffix(request.chatId);
     const options = this.getMessageOptions(request);
