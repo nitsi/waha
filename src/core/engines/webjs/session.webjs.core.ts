@@ -1,4 +1,7 @@
 import { UnprocessableEntityException } from '@nestjs/common';
+import { MongoStore } from '@waha/core/engines/webjs/stores/MongoStore';
+import { PostgresStore } from '@waha/core/engines/webjs/stores/PostgresStore';
+import { RemoteAuth } from 'whatsapp-web.js';
 import {
   getChannelInviteLink,
   WhatsappSession,
@@ -274,17 +277,46 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
     };
   }
 
+
   protected async buildClient() {
     const clientOptions = this.getClientOptions();
-    const base = process.env.WAHA_LOCAL_STORE_BASE_DIR || './.sessions';
-    clientOptions.authStrategy = new LocalAuth({
-      clientId: this.name,
-      dataPath: `${base}/webjs/default`,
-      logger: this.logger,
-      rmMaxRetries: undefined,
-    });
+    const sessionPostgresUrl = process.env.WHATSAPP_SESSIONS_POSTGRESQL_URL;
+    const sessionMongoUrl = process.env.WHATSAPP_SESSIONS_MONGO_URL;
+
+    if (sessionPostgresUrl) {
+      this.logger.info(`Using RemoteAuth with PostgresStore`);
+      const store = new PostgresStore({ url: sessionPostgresUrl });
+      clientOptions.authStrategy = new RemoteAuth({
+        clientId: this.name,
+        store: store,
+        backupSyncIntervalMs: 60000,
+        dataPath: this.getStoreDataPath('webjs/remote'),
+      });
+    } else if (sessionMongoUrl) {
+      this.logger.info(`Using RemoteAuth with MongoStore`);
+      const store = new MongoStore({ url: sessionMongoUrl });
+      clientOptions.authStrategy = new RemoteAuth({
+        clientId: this.name,
+        store: store,
+        backupSyncIntervalMs: 60000,
+        dataPath: this.getStoreDataPath('webjs/remote'),
+      });
+    } else {
+      clientOptions.authStrategy = new LocalAuth({
+        clientId: this.name,
+        dataPath: this.getStoreDataPath('webjs/default'),
+        logger: this.logger,
+        rmMaxRetries: undefined,
+      });
+    }
+
     this.addProxyConfig(clientOptions);
     return new WebjsClientCore(clientOptions, this.getWebjsTagsFlag());
+  }
+
+  protected getStoreDataPath(suffix: string) {
+    const base = process.env.WAHA_LOCAL_STORE_BASE_DIR || './.sessions';
+    return `${base}/${suffix}`;
   }
 
   protected getWebjsTagsFlag() {
