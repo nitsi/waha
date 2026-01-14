@@ -1,7 +1,9 @@
 import { UnprocessableEntityException } from '@nestjs/common';
-import { MongoStore } from '@waha/core/stores/MongoStore';
+// import { MongoStore } from '@waha/core/stores/MongoStore';
 import { PostgresStore } from '@waha/core/stores/PostgresStore';
 import { RemoteAuth } from 'whatsapp-web.js';
+import * as mongoose from 'mongoose';
+import { MongoStore } from 'wwebjs-mongo';
 import {
   getChannelInviteLink,
   WhatsappSession,
@@ -294,12 +296,14 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
       });
     } else if (sessionMongoUrl) {
       this.logger.info(`Using RemoteAuth with MongoStore`);
-      const store = new MongoStore({ url: sessionMongoUrl });
+      await mongoose.connect(sessionMongoUrl);
+      const store = new MongoStore({ mongoose: mongoose });
+      const dataPath = this.getStoreDataPath('webjs/remote');
       clientOptions.authStrategy = new RemoteAuth({
         clientId: this.name,
         store: store,
         backupSyncIntervalMs: 60000,
-        dataPath: this.getStoreDataPath('webjs/remote'),
+        dataPath: dataPath,
       });
     } else {
       clientOptions.authStrategy = new LocalAuth({
