@@ -1,6 +1,6 @@
 import { UnprocessableEntityException } from '@nestjs/common';
-import { MongoStore } from '@waha/core/engines/webjs/stores/MongoStore';
-import { PostgresStore } from '@waha/core/engines/webjs/stores/PostgresStore';
+import { MongoStore } from '@waha/core/stores/MongoStore';
+import { PostgresStore } from '@waha/core/stores/PostgresStore';
 import { RemoteAuth } from 'whatsapp-web.js';
 import {
   getChannelInviteLink,
