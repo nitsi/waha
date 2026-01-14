@@ -1,5 +1,25 @@
 exports.LoadWAHA = () => {
   window.WAHA = {};
+
+  // Patch sendSeen to avoid crash if WAWebStreamModel is missing
+  // https://github.com/pedroslopez/whatsapp-web.js/issues/2613
+  window.WWebJS.sendSeen = async (chatId) => {
+    const chat = await window.WWebJS.getChat(chatId, { getAsModel: false });
+    if (chat) {
+      if (window.Store.WAWebStreamModel && window.Store.WAWebStreamModel.Stream) {
+        window.Store.WAWebStreamModel.Stream.markAvailable();
+      }
+      if (window.Store.SendSeen) {
+        await window.Store.SendSeen.sendSeen(chat);
+      }
+      if (window.Store.WAWebStreamModel && window.Store.WAWebStreamModel.Stream) {
+        window.Store.WAWebStreamModel.Stream.markUnavailable();
+      }
+      return true;
+    }
+    return false;
+  };
+
   window.WAHA.WAWebBizLabelEditingAction = window.require(
     'WAWebBizLabelEditingAction',
   );
