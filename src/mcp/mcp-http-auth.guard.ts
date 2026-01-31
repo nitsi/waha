@@ -7,7 +7,7 @@ import {
   ForbiddenException,
 } from '@nestjs/common';
 import { Request } from 'express';
-import { HashAuth, IApiKeyAuth, PlainApiKeyAuth } from '@waha/core/auth/auth';
+import { HashAuth, IApiKeyAuth, NoAuth, PlainApiKeyAuth } from '@waha/core/auth/auth';
 import { WhatsappConfigService } from '@waha/config.service';
 
 @Injectable()
@@ -35,7 +35,7 @@ export class McpHttpAuthGuard implements CanActivate {
 
     // Step 1: Authenticate the request
     if (!this.isAuthorizedByDedicatedKey(request)) {
-      if (!this.defaultAuth.skipAuth()) {
+      if (!(this.defaultAuth instanceof NoAuth)) {
         const apiKey = this.extractApiKey(request);
         if (!apiKey || !this.defaultAuth.isValid(apiKey)) {
           this.logger.warn(
@@ -132,8 +132,8 @@ export class McpHttpAuthGuard implements CanActivate {
 
       throw new ForbiddenException(
         `Session "${sessionName}" is not allowed for MCP access. ` +
-          `Allowed sessions: ${allowedList}. ` +
-          `Configure WAHA_MCP_ALLOWED_SESSIONS to grant access.`,
+        `Allowed sessions: ${allowedList}. ` +
+        `Configure WAHA_MCP_ALLOWED_SESSIONS to grant access.`,
       );
     }
   }
