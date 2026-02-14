@@ -118,45 +118,45 @@ RUN if [ "$USE_BROWSER" = "chromium" ] || [ "$USE_BROWSER" = "chrome" ]; then \
 RUN if [ "$USE_BROWSER" = "chromium" ] || [ "$USE_BROWSER" = "chrome" ]; then \
     apt-get update  \
     && apt-get install -y \
-        fontconfig \
-        fonts-freefont-ttf \
-        fonts-gfs-neohellenic \
-        fonts-indic \
-        fonts-ipafont-gothic \
-        fonts-kacst \
-        fonts-liberation \
-        fonts-noto-cjk \
-        fonts-noto-color-emoji \
-        fonts-roboto \
-        fonts-thai-tlwg \
-        fonts-wqy-zenhei \
-        fonts-open-sans \
-      --no-install-recommends \
+    fontconfig \
+    fonts-freefont-ttf \
+    fonts-gfs-neohellenic \
+    fonts-indic \
+    fonts-ipafont-gothic \
+    fonts-kacst \
+    fonts-liberation \
+    fonts-noto-cjk \
+    fonts-noto-color-emoji \
+    fonts-roboto \
+    fonts-thai-tlwg \
+    fonts-wqy-zenhei \
+    fonts-open-sans \
+    --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*; \
     fi
 
 # Install xvfb, xauth
 RUN if [ "$USE_BROWSER" = "chromium" ] || [ "$USE_BROWSER" = "chrome" ]; then \
     apt-get update && apt-get install -y --no-install-recommends \
-        xvfb \
-        xauth \
-        libnss3 \
-        libxss1 \
-        libasound2 \
-        libatk-bridge2.0-0 \
-        libgtk-3-0 \
-        libdrm2 \
-        ca-certificates \
-        && rm -rf /var/lib/apt/lists/*; \
+    xvfb \
+    xauth \
+    libnss3 \
+    libxss1 \
+    libasound2 \
+    libatk-bridge2.0-0 \
+    libgtk-3-0 \
+    libdrm2 \
+    ca-certificates \
+    && rm -rf /var/lib/apt/lists/*; \
     fi
 
 # Install Chromium
 RUN if [ "$USE_BROWSER" = "chromium" ]; then \
-        apt-get update  \
-        && apt-get update \
-        && apt-get install -y chromium \
-          --no-install-recommends \
-        && rm -rf /var/lib/apt/lists/*; \
+    apt-get update  \
+    && apt-get update \
+    && apt-get install -y chromium \
+    --no-install-recommends \
+    && rm -rf /var/lib/apt/lists/*; \
     fi
 
 # Install Chrome
@@ -165,11 +165,11 @@ RUN if [ "$USE_BROWSER" = "chromium" ]; then \
 ARG CHROME_VERSION="140.0.7339.80-1"
 ARG OPUSTAGS_VERSION="1.10.1"
 RUN if [ "$USE_BROWSER" = "chrome" ]; then \
-        wget --no-verbose -O /tmp/chrome.deb https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}_amd64.deb \
-          && apt-get update \
-          && apt install -y /tmp/chrome.deb \
-          && rm /tmp/chrome.deb \
-          && rm -rf /var/lib/apt/lists/*; \
+    wget --no-verbose -O /tmp/chrome.deb https://dl.google.com/linux/chrome/deb/pool/main/g/google-chrome-stable/google-chrome-stable_${CHROME_VERSION}_amd64.deb \
+    && apt-get update \
+    && apt install -y /tmp/chrome.deb \
+    && rm /tmp/chrome.deb \
+    && rm -rf /var/lib/apt/lists/*; \
     fi
 
 # curl
@@ -184,7 +184,7 @@ RUN set -eux; \
     apt-get install -y --no-install-recommends ${buildDeps}; \
     mkdir -p /tmp/opustags; \
     curl -L https://github.com/fmang/opustags/archive/refs/tags/${OPUSTAGS_VERSION}.tar.gz \
-      | tar -xz -C /tmp/opustags; \
+    | tar -xz -C /tmp/opustags; \
     cd /tmp/opustags/opustags-${OPUSTAGS_VERSION}; \
     cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/usr/local -DCMAKE_BUILD_TYPE=Release; \
     cmake --build build --config Release; \
@@ -196,8 +196,8 @@ RUN set -eux; \
 # GOWS requirements
 # libc6
 RUN  apt-get update \
-     && apt-get install -y libc6 \
-     && rm -rf /var/lib/apt/lists/*
+    && apt-get install -y libc6 \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install tini for proper init process
 RUN apt-get update && apt-get install -y tini && rm -rf /var/lib/apt/lists/*
@@ -215,12 +215,13 @@ COPY --from=gows /go/gows/bin/gows /app/gows
 COPY .env.example ./.env.example
 COPY scripts/init-waha.js ./scripts/init-waha.js
 RUN chmod +x ./scripts/init-waha.js \
-  && printf '%s\n' '#!/bin/sh' 'exec node /app/scripts/init-waha.js "$@"' > /usr/local/bin/init-waha \
-  && chmod +x /usr/local/bin/init-waha
+    && printf '%s\n' '#!/bin/sh' 'exec node /app/scripts/init-waha.js "$@"' > /usr/local/bin/init-waha \
+    && chmod +x /usr/local/bin/init-waha
 ENV WAHA_GOWS_PATH=/app/gows
 ENV WAHA_GOWS_SOCKET=/tmp/gows.sock
 
 COPY entrypoint.sh /entrypoint.sh
+RUN sed -i 's/\r$//' /entrypoint.sh && chmod +x /entrypoint.sh
 
 # Chokidar options to monitor file changes
 ENV CHOKIDAR_USEPOLLING=1
