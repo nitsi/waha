@@ -33,6 +33,7 @@ import {
   NotImplementedByEngineError,
 } from '@waha/core/exceptions';
 import { IMediaEngineProcessor } from '@waha/core/media/IMediaEngineProcessor';
+import { WAMimeType } from '@waha/core/media/WAMimeType';
 import { QR } from '@waha/core/QR';
 import { StatusToAck } from '@waha/core/utils/acks';
 import {
@@ -841,16 +842,136 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
     );
   }
 
-  sendImage(request: MessageImageRequest) {
-    throw new AvailableInPlusVersion();
+  @Activity()
+  async sendImage(request: MessageImageRequest) {
+    const chatId = this.ensureSuffix(request.chatId);
+    const options = this.getMessageOptions(request);
+
+    if (request.caption) {
+      options.caption = request.caption;
+    }
+
+    let messageMedia: MessageMedia;
+
+    if ('data' in request.file) {
+      messageMedia = new MessageMedia(
+        request.file.mimetype,
+        request.file.data,
+        request.file.filename,
+      );
+    } else if ('url' in request.file) {
+      messageMedia = await MessageMedia.fromUrl(request.file.url);
+      if (request.file.filename) {
+        messageMedia.filename = request.file.filename;
+      }
+    } else {
+      throw new UnprocessableEntityException(
+        'Either "data" or "url" must be specified.',
+      );
+    }
+
+    return this.whatsapp.sendMessage(chatId, messageMedia, options);
   }
 
-  sendFile(request: MessageFileRequest) {
-    throw new AvailableInPlusVersion();
+  @Activity()
+  async sendFile(request: MessageFileRequest) {
+    const chatId = this.ensureSuffix(request.chatId);
+    const options = {
+      ...this.getMessageOptions(request),
+      sendMediaAsDocument: true,
+    };
+
+    if (request.caption) {
+      options.caption = request.caption;
+    }
+
+    let messageMedia: MessageMedia;
+
+    if ('data' in request.file) {
+      messageMedia = new MessageMedia(
+        request.file.mimetype,
+        request.file.data,
+        request.file.filename,
+      );
+    } else if ('url' in request.file) {
+      messageMedia = await MessageMedia.fromUrl(request.file.url);
+      if (request.file.filename) {
+        messageMedia.filename = request.file.filename;
+      }
+    } else {
+      throw new UnprocessableEntityException(
+        'Either "data" or "url" must be specified.',
+      );
+    }
+
+    return this.whatsapp.sendMessage(chatId, messageMedia, options);
   }
 
-  sendVoice(request: MessageVoiceRequest) {
-    throw new AvailableInPlusVersion();
+  @Activity()
+  async sendVoice(request: MessageVoiceRequest) {
+    const chatId = this.ensureSuffix(request.chatId);
+    const media = await this.createVoiceMessageMedia(
+      request.file,
+      request.convert,
+    );
+    const options = {
+      ...this.getMessageOptions(request),
+      sendAudioAsVoice: true,
+    };
+    return this.whatsapp.sendMessage(chatId, media, options);
+  }
+
+  private async createVoiceMessageMedia(
+    file: BinaryFile | RemoteFile,
+    convert?: boolean,
+  ): Promise<MessageMedia> {
+    const buffer = await this.resolveVoiceBuffer(file);
+    let processed = buffer;
+    let mimetype = file.mimetype;
+    let filename = file.filename;
+
+    if (convert) {
+      processed = await this.mediaConverter.voice(buffer);
+      mimetype = WAMimeType.VOICE;
+      filename = this.ensureVoiceFilename(filename);
+    }
+
+    const resolvedMimetype =
+      mimetype && mimetype.length > 0 ? mimetype : WAMimeType.VOICE;
+
+    return new MessageMedia(
+      resolvedMimetype,
+      processed.toString('base64'),
+      filename,
+    );
+  }
+
+  private async resolveVoiceBuffer(
+    file: BinaryFile | RemoteFile,
+  ): Promise<Buffer> {
+    if ('data' in file) {
+      return Buffer.from(file.data, 'base64');
+    }
+    if ('url' in file) {
+      return await this.fetch(file.url);
+    }
+    throw new UnprocessableEntityException(
+      'Either "data" or "url" must be specified to send a voice message.',
+    );
+  }
+
+  private ensureVoiceFilename(filename?: string): string {
+    if (!filename) {
+      return 'voice-note.opus';
+    }
+    if (filename.toLowerCase().endsWith('.opus')) {
+      return filename;
+    }
+    const dotIndex = filename.lastIndexOf('.');
+    if (dotIndex === -1) {
+      return `${filename}.opus`;
+    }
+    return `${filename.slice(0, dotIndex)}.opus`;
   }
 
   sendButtonsReply(request: MessageButtonReply) {
@@ -2182,8 +2303,7 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
 }
 
 export class WEBJSEngineMediaProcessor
-  implements IMediaEngineProcessor<Message>
-{
+  implements IMediaEngineProcessor<Message> {
   hasMedia(message: Message): boolean {
     if (!message.hasMedia) {
       return false;

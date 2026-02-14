@@ -28,17 +28,17 @@ const logger: Logger = pino({
 }).child({ name: 'Bootstrap' });
 
 process.on('uncaughtException', (err) => {
-  logger.error('Uncaught Exception:', err);
+  logger.error({ err }, 'Uncaught Exception');
   if (err instanceof Error) {
     logger.error(err.stack);
   }
 });
 process.on('unhandledRejection', (reason, promise) => {
-  logger.error('Unhandled Rejection at:', promise);
+  logger.error({ promise }, 'Unhandled Rejection at');
   if (reason instanceof Error) {
     logger.error(reason.stack);
   } else {
-    logger.error('Unhandled rejection reason:', reason);
+    logger.error({ reason }, 'Unhandled rejection reason');
   }
 });
 logger.info('NODE - Catching unhandled rejections and exceptions enabled');
@@ -103,7 +103,7 @@ async function bootstrap() {
   const config = app.get(WhatsappConfigService);
   await app.listen(config.port);
   logger.info(`WhatsApp HTTP API is running on: ${await app.getUrl()}`);
-  logger.info(VERSION, 'Environment');
+  logger.info({ version: VERSION }, 'Environment');
 }
 
 bootstrap().catch((error) => {
