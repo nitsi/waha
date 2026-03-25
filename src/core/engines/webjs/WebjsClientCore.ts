@@ -418,6 +418,47 @@ export class WebjsClientCore extends Client {
   }
 
   /**
+   * Channel preview messages
+   */
+  async getPreviewChannelMessages(inviteCode: string, limit: number) {
+    const messages = await this.pupPage.evaluate(
+      async (inviteCode, limit) => {
+        const msgFilter = (m) => {
+          if (m.isNotification || m.type === 'newsletter_notification') {
+            return false;
+          }
+          return true;
+        };
+
+        // @ts-ignore
+        const channel = await window.Store.ChannelUtils.loadNewsletterPreviewChat(inviteCode);
+        let msgs = channel.msgs.getModelsArray().filter(msgFilter);
+
+        while (msgs.length < limit) {
+          const loadedMessages =
+            // @ts-ignore
+            await window.Store.ConversationMsgs.loadEarlierMsgs(channel);
+          if (!loadedMessages || loadedMessages.length === 0) break;
+          msgs = [...loadedMessages.filter(msgFilter), ...msgs];
+        }
+
+        msgs.sort((a, b) => b.t - a.t);
+
+        if (msgs.length > limit) {
+          msgs = msgs.slice(0, limit);
+        }
+
+        // @ts-ignore
+        return msgs.map((m) => window.WWebJS.getMessageModel(m));
+      },
+      inviteCode,
+      limit,
+    );
+
+    return messages.map((m) => new Message(this, m));
+  }
+
+  /**
    * Presences methods
    */
   public async subscribePresence(chatId: string): Promise<void> {
