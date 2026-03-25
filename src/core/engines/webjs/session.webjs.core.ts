@@ -1546,11 +1546,27 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
     throw new AvailableInPlusVersion();
   }
 
+  @Activity()
   public async previewChannelMessages(
     inviteCode: string,
     query: PreviewChannelMessages,
   ): Promise<ChannelMessage[]> {
-    throw new AvailableInPlusVersion();
+    const messages = await this.whatsapp.getPreviewChannelMessages(
+      inviteCode,
+      query.limit,
+    );
+    const promises = [];
+    for (const msg of messages) {
+      promises.push(this.processIncomingMessage(msg, query.downloadMedia));
+    }
+    const result = await Promise.all(promises);
+    return result.filter(Boolean).map((message) => {
+      return {
+        message: message,
+        reactions: {},
+        viewCount: 0,
+      };
+    });
   }
 
   protected ChatToChannel(chat: WEBJSChannel): Channel {
