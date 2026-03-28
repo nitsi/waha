@@ -78,10 +78,13 @@ export class CoreMediaConverter implements IMediaConverter {
       // ffmpeg can identify the format reliably).
       fs.writeFileSync(inputPath, content);
 
-      const ffmpeg = spawn('ffmpeg', [
-        '-i',
-        inputPath,
-        '-y', // Overwrite output file
+      const ffmpeg = spawn(
+        'ffmpeg',
+        [
+          '-nostdin',
+          '-y', // Overwrite output file
+          '-i',
+          inputPath,
         '-vn', // No video
         '-acodec',
         'libopus',
@@ -102,7 +105,9 @@ export class CoreMediaConverter implements IMediaConverter {
         '-f',
         'ogg', // Output format
         outputPath,
-      ]);
+        ],
+        { timeout: 60000 },
+      );
 
       let stderr = '';
       ffmpeg.stderr.on('data', (data: Buffer) => {

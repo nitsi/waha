@@ -13,6 +13,7 @@ export async function fetchBuffer(url: string): Promise<Buffer> {
     .get(url, {
       responseType: 'arraybuffer',
       httpsAgent: InsecureHttpsAgent,
+      timeout: 120000,
       headers: {
         'User-Agent': userAgent.toString(),
       },

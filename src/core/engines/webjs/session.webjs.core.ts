@@ -876,6 +876,8 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
   @Activity()
   async sendFile(request: MessageFileRequest) {
     const chatId = this.ensureSuffix(request.chatId);
+    this.logger.debug({ chatId, file: !!request.file }, 'sendFile: Starting');
+
     const options = {
       ...this.getMessageOptions(request),
       sendMediaAsDocument: true,
@@ -888,13 +890,21 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
     let messageMedia: MessageMedia;
 
     if ('data' in request.file) {
+      this.logger.debug('sendFile: Creating MessageMedia from base64 data');
       messageMedia = new MessageMedia(
         request.file.mimetype,
         request.file.data,
         request.file.filename,
       );
     } else if ('url' in request.file) {
-      messageMedia = await MessageMedia.fromUrl(request.file.url);
+      this.logger.debug({ url: request.file.url }, 'sendFile: Downloading file from URL');
+      try {
+        messageMedia = await MessageMedia.fromUrl(request.file.url);
+        this.logger.debug('sendFile: Successfully downloaded file from URL');
+      } catch (error) {
+        this.logger.error(error, 'sendFile: Failed to download file from URL');
+        throw error;
+      }
       if (request.file.filename) {
         messageMedia.filename = request.file.filename;
       }
@@ -904,21 +914,33 @@ export class WhatsappSessionWebJSCore extends WhatsappSession {
       );
     }
 
-    return this.whatsapp.sendMessage(chatId, messageMedia, options);
+    this.logger.debug('sendFile: Calling whatsapp.sendMessage');
+    const result = await this.whatsapp.sendMessage(chatId, messageMedia, options);
+    this.logger.debug('sendFile: Successfully sent message');
+    return result;
   }
 
   @Activity()
   async sendVoice(request: MessageVoiceRequest) {
     const chatId = this.ensureSuffix(request.chatId);
+    this.logger.debug({ chatId, convert: request.convert }, 'sendVoice: Starting');
+
+    this.logger.debug('sendVoice: Creating voice message media');
     const media = await this.createVoiceMessageMedia(
       request.file,
       request.convert,
     );
+    this.logger.debug('sendVoice: Successfully created voice message media');
+
     const options = {
       ...this.getMessageOptions(request),
       sendAudioAsVoice: true,
     };
-    return this.whatsapp.sendMessage(chatId, media, options);
+
+    this.logger.debug('sendVoice: Calling whatsapp.sendMessage');
+    const result = await this.whatsapp.sendMessage(chatId, media, options);
+    this.logger.debug('sendVoice: Successfully sent voice message');
+    return result;
   }
 
   private async createVoiceMessageMedia(
